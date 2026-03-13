@@ -13,7 +13,7 @@ An interactive GPU-accelerated viewer for [UMAP](https://umap-learn.readthedocs.
 - **Polygon selection** — click to place vertices, close near the start to select; right-click to cancel
 - **Multiple label sets** — load several label/category parquet files and switch between them instantly from the left panel; colours update live on both native and WASM builds
 - **Custom colours** — optional per-label-set colour CSV files (`label,#RRGGBB`); unspecified labels fall back to evenly-spaced hues
-- **Category histogram** — right panel shows the distribution of selected points across categories, bars coloured to match the scatter plot
+- **Category histogram** — right panel shows the distribution of selected points across categories, bars coloured to match the scatter plot; click a category label to highlight only that category's points in the scatter plot (click again to deselect)
 - **Sortable table** — bottom panel lists selected points with sortable columns: `#`, `Label`, `ID`, `X`, `Y`
 - **Export selected IDs** — save the IDs of all selected points to a text file (one ID per line); native build opens a save dialog defaulting to `~/Downloads`; WASM build triggers a browser download
 - **Hover tooltip** — shows `label: <category>`, `id: <point id>`, and cursor data coordinates for the nearest point
@@ -288,6 +288,7 @@ port = 8080
 | Cancel polygon | Right-click |
 | Clear selection | "Clear selection" button — removes highlight and panels, preserves pan/zoom |
 | Export selected IDs | "Export IDs" button — saves selected point IDs to a text file (one per line) |
+| Focus a category | Click a category label in the histogram — dims all other points; click again to clear |
 | Sort table | Click any column header in the bottom panel; click again to reverse |
 
 ### Reset view vs Clear selection
@@ -300,6 +301,10 @@ port = 8080
 ### Polygon selection workflow
 
 After closing a polygon the selection is confirmed and the polygon outline remains visible as a static closed shape. The histogram and table update immediately to reflect the selected points. To refine the selection, click anywhere on the canvas while in **Select** mode — this discards the old polygon and lets you draw a new one; the previous selection data stays visible in the panels until the new polygon is closed and the selection updates. Right-clicking at any time cancels the in-progress polygon without affecting the current selection.
+
+### Category focus
+
+Clicking a category label in the histogram panel isolates that category within the current selection: only points belonging to that category stay at full brightness; all other points (selected or not) are dimmed to 15% opacity. The active label is highlighted in yellow. Clicking the same label again restores the normal selection highlight. Focus is automatically cleared when a new polygon is drawn, the selection is cleared, or the view is reset.
 
 Point colours come from the active label set's colour map (custom CSV if provided, otherwise evenly-spaced hues). The histogram bars use the same colours as the scatter plot. Selected points are highlighted; unselected points are dimmed to 15% opacity. The hover tooltip shows `label: <category>`, `id: <point id>`, and data coordinates.
 

@@ -103,6 +103,7 @@ pub struct UmapApp {
     poly_verts: Vec<[f32; 2]>,       // data-space polygon vertices
     poly_closed: bool,               // true after selection is confirmed
     selected_indices: Vec<usize>,    // indices into cloud.points
+    focused_category: Option<String>, // category highlighted via histogram click
     category_histogram: Vec<(String, usize)>, // (category, count) sorted descending
     // table sort state
     table_sort_col: SortCol,
@@ -158,6 +159,7 @@ impl UmapApp {
             poly_verts: Vec::new(),
             poly_closed: false,
             selected_indices: Vec::new(),
+            focused_category: None,
             category_histogram: Vec::new(),
             table_sort_col: SortCol::Row,
             table_sort_asc: true,
@@ -331,6 +333,27 @@ impl UmapApp {
         self.sorted_rows = order;
     }
 
+    /// Apply category focus highlight: within the selection, only points in
+    /// `focused_category` (if set) get highlight=1.0; all others get 0.15.
+    /// Clears focus when called with None (restores normal selection highlight).
+    fn apply_category_focus(&mut self, frame: &eframe::Frame) {
+        let selected_set: std::collections::HashSet<usize> =
+            self.selected_indices.iter().copied().collect();
+        for (i, p) in self.cloud.points.iter_mut().enumerate() {
+            p.highlight = match &self.focused_category {
+                Some(cat) => {
+                    let in_sel = selected_set.contains(&i);
+                    let in_cat = self.cloud.categories.get(i).map(|c| c == cat).unwrap_or(false);
+                    if in_sel && in_cat { 1.0 } else { 0.15 }
+                }
+                None => {
+                    if selected_set.is_empty() || selected_set.contains(&i) { 1.0 } else { 0.15 }
+                }
+            };
+        }
+        self.upload_points(frame);
+    }
+
     fn upload_points(&self, frame: &eframe::Frame) {
         if let Some(wgpu_rs) = frame.wgpu_render_state() {
             let res_lock = wgpu_rs.renderer.read();
@@ -388,6 +411,7 @@ impl eframe::App for UmapApp {
                 self.cloud.clear_selection();
                 self.upload_points(frame);
                 self.selected_indices.clear();
+                self.focused_category = None;
                 self.category_histogram.clear();
                 self.sorted_rows.clear();
                 self.poly_verts.clear();
@@ -428,6 +452,7 @@ impl eframe::App for UmapApp {
                     self.cloud.clear_selection();
                     self.upload_points(frame);
                     self.selected_indices.clear();
+                    self.focused_category = None;
                     self.category_histogram.clear();
                     self.sorted_rows.clear();
                     self.poly_verts.clear();
@@ -465,7 +490,8 @@ impl eframe::App for UmapApp {
         if !self.selected_indices.is_empty() {
             egui::TopBottomPanel::bottom("selected_points")
                 .resizable(true)
-                .min_height(80.0)
+                .min_height(10.0)
+                .default_height(120.0)
                 .max_height(300.0)
                 .show(ctx, |ui| {
                     ui.strong(format!("Selected points ({}):", self.selected_indices.len()));
@@ -488,10 +514,13 @@ impl eframe::App for UmapApp {
                         }
                     };
 
+                    let avail = ui.available_size();
+                    ui.allocate_ui(avail, |ui| {
                     egui::ScrollArea::horizontal().show(ui, |ui| {
                     TableBuilder::new(ui)
                         .striped(true)
                         .resizable(true)
+                        .min_scrolled_height(0.0)
                         .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
                         .column(Column::initial(60.0).range(40.0..=120.0))
                         .column(Column::initial(140.0).range(60.0..=400.0))
@@ -529,6 +558,7 @@ impl eframe::App for UmapApp {
                             });
                         });
                     }); // ScrollArea::horizontal
+                    }); // allocate_ui
 
                     if let Some(col) = clicked_col {
                         if self.table_sort_col == col {
@@ -543,12 +573,16 @@ impl eframe::App for UmapApp {
         }
 
         // ---- right panel: category histogram ----
-        if !self.category_histogram.is_empty() {
+        let histogram_click = if !self.category_histogram.is_empty() {
             egui::SidePanel::right("histogram")
                 .min_width(260.0)
                 .resizable(true)
                 .show(ctx, |ui| {
                     ui.heading("Category histogram");
+                    ui.label(egui::RichText::new("Click a label to highlight its points")
+                        .size(10.0)
+                        .italics()
+                        .color(ui.visuals().weak_text_color()));
                     ui.separator();
 
                     let max_count = self.category_histogram.first().map(|(_, c)| *c).unwrap_or(1);
@@ -556,10 +590,13 @@ impl eframe::App for UmapApp {
                     const GAP_W:   f32 = 6.0;
                     const COUNT_W: f32 = 52.0;
                     let bar_max_w = (ui.available_width() - LABEL_W - GAP_W - COUNT_W).max(40.0);
+                    let focused = &self.focused_category;
 
+                    let mut clicked: Option<String> = None;
                     egui::ScrollArea::vertical().show(ui, |ui| {
                         for (cat, count) in &self.category_histogram {
                             let fraction = *count as f32 / max_count as f32;
+                            let is_focused = focused.as_deref() == Some(cat.as_str());
                             // Look up the scatter plot color for this category from any matching point.
                             let bar_color = self.cloud.categories.iter().zip(self.cloud.points.iter())
                                 .find(|(c, _)| c.as_str() == cat.as_str())
@@ -572,17 +609,39 @@ impl eframe::App for UmapApp {
                             ui.horizontal(|ui| {
                                 // Zero item spacing so all widths are fully predictable.
                                 ui.spacing_mut().item_spacing.x = 0.0;
-                                // Right-justified category label.
-                                let (label_rect, _) = ui.allocate_exact_size(
+                                // Clickable category label (right-justified).
+                                let (label_rect, label_resp) = ui.allocate_exact_size(
                                     egui::vec2(LABEL_W, 16.0),
-                                    egui::Sense::hover(),
+                                    egui::Sense::click(),
                                 );
+                                if label_resp.clicked() {
+                                    clicked = Some(cat.clone());
+                                }
+                                // Highlight background when focused or hovered.
+                                if is_focused {
+                                    ui.painter().rect_filled(
+                                        label_rect,
+                                        2.0,
+                                        egui::Color32::from_rgba_premultiplied(255, 220, 50, 40),
+                                    );
+                                } else if label_resp.hovered() {
+                                    ui.painter().rect_filled(
+                                        label_rect,
+                                        2.0,
+                                        egui::Color32::from_white_alpha(15),
+                                    );
+                                }
+                                let text_color = if is_focused {
+                                    egui::Color32::from_rgb(255, 220, 50)
+                                } else {
+                                    ui.visuals().text_color()
+                                };
                                 ui.painter().text(
                                     label_rect.right_center(),
                                     egui::Align2::RIGHT_CENTER,
                                     cat,
                                     egui::FontId::proportional(11.0),
-                                    ui.visuals().text_color(),
+                                    text_color,
                                 );
                                 // Fixed gap.
                                 ui.allocate_exact_size(egui::vec2(GAP_W, 16.0), egui::Sense::hover());
@@ -612,7 +671,21 @@ impl eframe::App for UmapApp {
                             });
                         }
                     });
-                });
+                    clicked
+                })
+                .inner
+        } else {
+            None
+        };
+
+        // Toggle category focus based on histogram label click.
+        if let Some(cat) = histogram_click {
+            if self.focused_category.as_deref() == Some(cat.as_str()) {
+                self.focused_category = None;
+            } else {
+                self.focused_category = Some(cat);
+            }
+            self.apply_category_focus(frame);
         }
 
         // ---- canvas ----
@@ -703,6 +776,7 @@ impl eframe::App for UmapApp {
                                 if close {
                                     let poly = self.poly_verts.clone();
                                     self.selected_indices = self.cloud.apply_polygon_selection(&poly);
+                                    self.focused_category = None;
                                     self.category_histogram = self.build_category_histogram();
                                     self.rebuild_sorted_rows();
                                     self.upload_points(frame);
