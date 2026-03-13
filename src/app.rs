@@ -595,10 +595,17 @@ impl eframe::App for UmapApp {
                     ui.separator();
 
                     let max_count = self.category_histogram.first().map(|(_, c)| *c).unwrap_or(1);
-                    const LABEL_W: f32 = 120.0;
                     const GAP_W:   f32 = 6.0;
                     const COUNT_W: f32 = 52.0;
-                    let bar_max_w = (ui.available_width() - LABEL_W - GAP_W - COUNT_W).max(40.0);
+                    const LABEL_PADDING: f32 = 8.0;
+                    let font_id = egui::FontId::proportional(11.0);
+                    let label_w = self.category_histogram.iter()
+                        .map(|(cat, _)| ui.fonts(|f| f.layout_no_wrap(
+                            cat.clone(), font_id.clone(), egui::Color32::WHITE,
+                        ).size().x))
+                        .fold(0.0_f32, f32::max)
+                        + LABEL_PADDING;
+                    let bar_max_w = (ui.available_width() - label_w - GAP_W - COUNT_W).max(40.0);
                     let focused = &self.focused_category;
 
                     let mut clicked: Option<String> = None;
@@ -620,7 +627,7 @@ impl eframe::App for UmapApp {
                                 ui.spacing_mut().item_spacing.x = 0.0;
                                 // Clickable category label (right-justified).
                                 let (label_rect, label_resp) = ui.allocate_exact_size(
-                                    egui::vec2(LABEL_W, 16.0),
+                                    egui::vec2(label_w, 16.0),
                                     egui::Sense::click(),
                                 );
                                 if label_resp.clicked() {
