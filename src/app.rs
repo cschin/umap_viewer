@@ -433,6 +433,13 @@ impl eframe::App for UmapApp {
                     self.poly_verts.clear();
                     self.poly_closed = false;
                 }
+                if ui.button("Export IDs").clicked() {
+                    let ids: Vec<String> = self.selected_indices.iter()
+                        .filter_map(|&i| self.cloud.labels.get(i).cloned())
+                        .collect();
+                    let content = ids.join("\n");
+                    export_ids(content);
+                }
             }
 
             ui.add_space(8.0);
@@ -793,4 +800,45 @@ impl eframe::App for UmapApp {
                 }
             });
     }
+}
+
+// ---------------------------------------------------------------------------
+// Export helpers
+// ---------------------------------------------------------------------------
+
+#[cfg(not(target_arch = "wasm32"))]
+fn export_ids(content: String) {
+    let mut dialog = rfd::FileDialog::new()
+        .set_file_name("selected_ids.txt")
+        .add_filter("Text file", &["txt"]);
+    if let Some(downloads) = dirs::home_dir().map(|h| h.join("Downloads")) {
+        if downloads.exists() {
+            dialog = dialog.set_directory(&downloads);
+        }
+    }
+    if let Some(path) = dialog.save_file() {
+        let _ = std::fs::write(&path, content);
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn export_ids(content: String) {
+    use wasm_bindgen::JsCast as _;
+    let window = web_sys::window().unwrap();
+    let document = window.document().unwrap();
+
+    let array = js_sys::Array::new();
+    array.push(&wasm_bindgen::JsValue::from_str(&content));
+    let mut opts = web_sys::BlobPropertyBag::new();
+    opts.type_("text/plain");
+    let blob = web_sys::Blob::new_with_str_sequence_and_options(&array, &opts).unwrap();
+    let url = web_sys::Url::create_object_url_with_blob(&blob).unwrap();
+
+    let a = document
+        .create_element("a").unwrap()
+        .dyn_into::<web_sys::HtmlAnchorElement>().unwrap();
+    a.set_href(&url);
+    a.set_download("selected_ids.txt");
+    a.click();
+    let _ = web_sys::Url::revoke_object_url(&url);
 }

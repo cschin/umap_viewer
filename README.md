@@ -15,6 +15,7 @@ An interactive GPU-accelerated viewer for [UMAP](https://umap-learn.readthedocs.
 - **Custom colours** — optional per-label-set colour CSV files (`label,#RRGGBB`); unspecified labels fall back to evenly-spaced hues
 - **Category histogram** — right panel shows the distribution of selected points across categories, bars coloured to match the scatter plot
 - **Sortable table** — bottom panel lists selected points with sortable columns: `#`, `Label`, `ID`, `X`, `Y`
+- **Export selected IDs** — save the IDs of all selected points to a text file (one ID per line); native build opens a save dialog defaulting to `~/Downloads`; WASM build triggers a browser download
 - **Hover tooltip** — shows `label: <category>`, `id: <point id>`, and cursor data coordinates for the nearest point
 - **Dual target** — identical code base builds for macOS / Linux / Windows (native) and the browser (WASM / WebGL2)
 
@@ -286,6 +287,7 @@ port = 8080
 | Start new polygon | Left-click anywhere on canvas while a closed polygon is shown |
 | Cancel polygon | Right-click |
 | Clear selection | "Clear selection" button — removes highlight and panels, preserves pan/zoom |
+| Export selected IDs | "Export IDs" button — saves selected point IDs to a text file (one per line) |
 | Sort table | Click any column header in the bottom panel; click again to reverse |
 
 ### Reset view vs Clear selection
@@ -315,4 +317,6 @@ Point colours come from the active label set's colour map (custom CSV if provide
 | `polars` | Parquet loading and column processing (native only) |
 | `serde` / `serde_yaml` | `config.yaml` deserialisation (native only) |
 | `indexmap` | Order-preserving map for `labels_parquet` and `label_colors` in `config.yaml` (native only) |
-| `wasm-bindgen` / `web-sys` | Rust ↔ browser JS bindings (WASM only) |
+| `rfd` | Native file save dialog for ID export (native only) |
+| `dirs` | Resolves `~/Downloads` as the default save directory (native only) |
+| `wasm-bindgen` / `web-sys` / `js-sys` | Rust ↔ browser JS bindings; blob download for ID export (WASM only) |
