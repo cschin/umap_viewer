@@ -948,7 +948,7 @@ fn export_ids(content: String) {
     let array = js_sys::Array::new();
     array.push(&wasm_bindgen::JsValue::from_str(&content));
     let mut opts = web_sys::BlobPropertyBag::new();
-    opts.type_("text/plain");
+    opts.set_type("text/plain");
     let blob = web_sys::Blob::new_with_str_sequence_and_options(&array, &opts).unwrap();
     let url = web_sys::Url::create_object_url_with_blob(&blob).unwrap();
 
