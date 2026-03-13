@@ -73,6 +73,8 @@ pub struct Point {
     pub b: f32,
     /// 1.0 = normal/selected, 0.15 = dimmed (not selected)
     pub highlight: f32,
+    /// Size multiplier relative to global point_size (1.0 = normal, 2.0 = double)
+    pub size: f32,
 }
 
 /// Maps a category name to an RGB colour (0.0–1.0 per channel).
@@ -122,7 +124,7 @@ impl PointCloud {
             let (r, g, b) = colors[c];
             // Box-Muller Gaussian sample
             let (dx, dy) = box_muller(&mut rng, sigma);
-            points.push(Point { x: cx + dx, y: cy + dy, r, g, b, highlight: 1.0 });
+            points.push(Point { x: cx + dx, y: cy + dy, r, g, b, highlight: 1.0, size: 1.0 });
         }
 
         let xmin = points.iter().map(|p| p.x).fold(f32::INFINITY, f32::min);
@@ -149,6 +151,7 @@ impl PointCloud {
         for (i, p) in self.points.iter_mut().enumerate() {
             let sel = point_in_polygon(p.x, p.y, poly);
             p.highlight = if sel { 1.0 } else { 0.15 };
+            p.size = 1.0;
             if sel { indices.push(i); }
         }
         indices
@@ -240,7 +243,7 @@ impl PointCloud {
             let (r, g, b) = first_colors.get(name)
                 .copied()
                 .unwrap_or_else(|| hue_to_rgb(first_idx[i] as f32 / n_cats_f));
-            points.push(Point { x: xs[i], y: ys[i], r, g, b, highlight: 1.0 });
+            points.push(Point { x: xs[i], y: ys[i], r, g, b, highlight: 1.0, size: 1.0 });
             categories.push(name.clone());
         }
 
@@ -366,6 +369,7 @@ impl PointCloud {
     pub fn clear_selection(&mut self) {
         for p in &mut self.points {
             p.highlight = 1.0;
+            p.size = 1.0;
         }
     }
 
@@ -497,7 +501,7 @@ impl PointCloud {
             let (r, g, b) = hue_to_rgb(category_idx[i] as f32 / n_categories as f32);
             labels.push(ids.get(i).unwrap_or("").to_string());
             categories.push(cats_col.get(i).unwrap_or("").to_string());
-            points.push(Point { x, y, r, g, b, highlight: 1.0 });
+            points.push(Point { x, y, r, g, b, highlight: 1.0, size: 1.0 });
         }
 
         let xmin = points.iter().map(|p| p.x).fold(f32::INFINITY, f32::min);

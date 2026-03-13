@@ -105,7 +105,7 @@ impl PointRenderer {
                 entry_point: "vs_main",
                 compilation_options: Default::default(),
                 buffers: &[
-                    // buffer slot 0: per-instance point data (x,y,r,g,b,highlight)
+                    // buffer slot 0: per-instance point data (x,y,r,g,b,highlight,size)
                     wgpu::VertexBufferLayout {
                         array_stride: std::mem::size_of::<Point>() as u64,
                         step_mode: wgpu::VertexStepMode::Instance,
@@ -124,6 +124,11 @@ impl PointRenderer {
                                 offset: 20,
                                 shader_location: 2,
                                 format: wgpu::VertexFormat::Float32,   // highlight
+                            },
+                            wgpu::VertexAttribute {
+                                offset: 24,
+                                shader_location: 4,
+                                format: wgpu::VertexFormat::Float32,   // size
                             },
                         ],
                     },

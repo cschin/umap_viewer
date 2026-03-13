@@ -340,16 +340,19 @@ impl UmapApp {
         let selected_set: std::collections::HashSet<usize> =
             self.selected_indices.iter().copied().collect();
         for (i, p) in self.cloud.points.iter_mut().enumerate() {
-            p.highlight = match &self.focused_category {
+            let (highlight, size) = match &self.focused_category {
                 Some(cat) => {
                     let in_sel = selected_set.contains(&i);
                     let in_cat = self.cloud.categories.get(i).map(|c| c == cat).unwrap_or(false);
-                    if in_sel && in_cat { 1.0 } else { 0.15 }
+                    if in_sel && in_cat { (1.0, 2.0) } else { (0.15, 1.0) }
                 }
                 None => {
-                    if selected_set.is_empty() || selected_set.contains(&i) { 1.0 } else { 0.15 }
+                    let h = if selected_set.is_empty() || selected_set.contains(&i) { 1.0 } else { 0.15 };
+                    (h, 1.0)
                 }
             };
+            p.highlight = highlight;
+            p.size = size;
         }
         self.upload_points(frame);
     }

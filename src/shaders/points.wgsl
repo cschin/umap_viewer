@@ -14,6 +14,7 @@ struct VertexInput {
     @location(1) color: vec3<f32>,
     @location(2) highlight: f32,
     @location(3) quad_offset: vec2<f32>,
+    @location(4) size: f32,
 }
 
 struct VertexOutput {
@@ -27,9 +28,10 @@ struct VertexOutput {
 fn vs_main(in: VertexInput) -> VertexOutput {
     var out: VertexOutput;
     let clip_center = uniforms.transform * vec4<f32>(in.pos, 0.0, 1.0);
+    let sz = uniforms.point_size * in.size;
     let pixel_offset = vec2<f32>(
-        in.quad_offset.x * uniforms.point_size / uniforms.viewport_aspect,
-        in.quad_offset.y * uniforms.point_size,
+        in.quad_offset.x * sz / uniforms.viewport_aspect,
+        in.quad_offset.y * sz,
     );
     out.clip_pos = clip_center + vec4<f32>(pixel_offset, 0.0, 0.0);
     out.color = in.color;
