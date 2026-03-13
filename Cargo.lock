@@ -4702,6 +4702,7 @@ dependencies = [
  "egui_extras",
  "env_logger",
  "getrandom 0.2.17",
+ "indexmap",
  "polars",
  "rand 0.8.5",
  "serde",

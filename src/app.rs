@@ -109,6 +109,11 @@ pub struct UmapApp {
     sorted_rows: Vec<usize>,         // permutation of 0..selected_indices.len()
     // wgpu queue for point buffer uploads
     wgpu_queue: Arc<wgpu::Queue>,
+    // label file selector
+    label_files: Vec<(String, String)>,          // (display name, path)
+    all_label_categories: Vec<Vec<String>>,      // pre-loaded categories per file
+    color_maps: Vec<crate::data::ColorMap>,      // per-file colour maps (empty = hue default)
+    selected_label_idx: usize,
 }
 
 impl UmapApp {
@@ -156,15 +161,70 @@ impl UmapApp {
             table_sort_asc: true,
             sorted_rows: Vec::new(),
             wgpu_queue: wgpu_rs.queue.clone(),
+            label_files: Vec::new(),
+            all_label_categories: Vec::new(),
+            color_maps: Vec::new(),
+            selected_label_idx: 0,
         }
     }
 
     /// Native constructor: load data from the paths in `config`.
     #[cfg(not(target_arch = "wasm32"))]
     pub fn with_config(cc: &eframe::CreationContext<'_>, config: &crate::config::Config) -> Self {
-        let cloud = PointCloud::load_from_parquet(&config.coords_parquet, &config.labels_parquet)
+        let coords_path = config.coords_parquet.clone();
+        let label_pairs = config.label_pairs();
+
+        let primary_path = label_pairs.first().map(|(_, p)| p.as_str()).unwrap_or("");
+        let mut cloud = PointCloud::load_from_parquet(&coords_path, primary_path)
             .expect("failed to load parquet data");
-        Self::build(cc, cloud)
+
+        // Pre-load categories for every label file so switching is instant.
+        let all_label_categories: Vec<Vec<String>> = label_pairs.iter()
+            .map(|(_, path)| {
+                cloud.load_categories_from_parquet(path)
+                    .unwrap_or_else(|e| {
+                        eprintln!("Warning: could not load {path}: {e}");
+                        vec![String::new(); cloud.points.len()]
+                    })
+            })
+            .collect();
+
+        // Build colour maps: load CSV if configured, otherwise build hue defaults.
+        let color_maps: Vec<crate::data::ColorMap> = label_pairs.iter()
+            .zip(all_label_categories.iter())
+            .map(|((name, _), cats)| {
+                if let Some(csv_path) = config.color_file_for(name) {
+                    PointCloud::load_color_csv(csv_path).unwrap_or_else(|e| {
+                        eprintln!("Warning: could not load color CSV {csv_path}: {e}");
+                        crate::data::ColorMap::new()
+                    })
+                } else {
+                    // Default: build hue colour map from the unique categories.
+                    let mut order: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+                    for cat in cats { let n = order.len(); order.entry(cat.as_str()).or_insert(n); }
+                    let n_cats = order.len().max(1);
+                    order.iter().map(|(&name, &idx)| {
+                        (name.to_string(), crate::data::hue_to_rgb(idx as f32 / n_cats as f32))
+                    }).collect()
+                }
+            })
+            .collect();
+
+        cloud.label_set_names    = label_pairs.iter().map(|(name, _)| name.clone()).collect();
+        cloud.all_categories     = all_label_categories.clone();
+        cloud.category_color_maps = color_maps.clone();
+
+        // Apply the first label set's colours to the points.
+        if let (Some(cats), Some(cmap)) = (all_label_categories.first(), color_maps.first()) {
+            cloud.apply_categories(cats.clone(), cmap);
+        }
+
+        let mut app = Self::build(cc, cloud);
+        app.label_files          = label_pairs;
+        app.all_label_categories = all_label_categories;
+        app.color_maps           = color_maps;
+        app.selected_label_idx   = 0;
+        app
     }
 
     /// WASM constructor: load data from the embedded binary blob.
@@ -173,7 +233,17 @@ impl UmapApp {
         let cloud = PointCloud::from_bin(
             include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/data/points.bin"))
         ).expect("failed to parse embedded points.bin");
-        Self::build(cc, cloud)
+
+        let label_files          = cloud.label_set_names.iter().map(|n| (n.clone(), String::new())).collect();
+        let all_label_categories = cloud.all_categories.clone();
+        let color_maps           = cloud.category_color_maps.clone();
+
+        let mut app = Self::build(cc, cloud);
+        app.label_files          = label_files;
+        app.all_label_categories = all_label_categories;
+        app.color_maps           = color_maps;
+        app.selected_label_idx   = 0;
+        app
     }
 
     fn screen_to_data(&self, screen: Pos2, rect: egui::Rect) -> (f32, f32) {
@@ -276,8 +346,35 @@ impl eframe::App for UmapApp {
             ui.heading("UMAP Viewer");
             ui.separator();
             ui.label(format!("Points: {}", self.cloud.points.len()));
-            ui.add_space(8.0);
 
+            // ---- label file selector ----
+            if self.label_files.len() > 1 {
+                ui.add_space(6.0);
+                ui.label("Label set:");
+                let mut changed = false;
+                for (i, (name, _path)) in self.label_files.iter().enumerate() {
+                    if ui.selectable_label(self.selected_label_idx == i, name).clicked()
+                        && self.selected_label_idx != i
+                    {
+                        self.selected_label_idx = i;
+                        changed = true;
+                    }
+                }
+                if changed {
+                    let new_cats = self.all_label_categories[self.selected_label_idx].clone();
+                    let empty = crate::data::ColorMap::new();
+                    let cmap  = self.color_maps.get(self.selected_label_idx).unwrap_or(&empty);
+                    self.cloud.apply_categories(new_cats, cmap);
+                    self.upload_points(frame);
+                    // Rebuild histogram if there is an active selection.
+                    if !self.selected_indices.is_empty() {
+                        self.category_histogram = self.build_category_histogram();
+                    }
+                }
+                ui.separator();
+            }
+
+            ui.add_space(8.0);
             ui.label("Point size");
             ui.add(egui::Slider::new(&mut self.point_size, 1.0..=20.0));
             ui.label("Opacity");
@@ -441,6 +538,15 @@ impl eframe::App for UmapApp {
                     egui::ScrollArea::vertical().show(ui, |ui| {
                         for (cat, count) in &self.category_histogram {
                             let fraction = *count as f32 / max_count as f32;
+                            // Look up the scatter plot color for this category from any matching point.
+                            let bar_color = self.cloud.categories.iter().zip(self.cloud.points.iter())
+                                .find(|(c, _)| c.as_str() == cat.as_str())
+                                .map(|(_, p)| egui::Color32::from_rgb(
+                                    (p.r * 255.0) as u8,
+                                    (p.g * 255.0) as u8,
+                                    (p.b * 255.0) as u8,
+                                ))
+                                .unwrap_or(egui::Color32::from_rgb(80, 140, 220));
                             ui.horizontal(|ui| {
                                 // Right-justified label in a fixed-width slot.
                                 let (label_rect, _) = ui.allocate_exact_size(
@@ -465,7 +571,7 @@ impl eframe::App for UmapApp {
                                     rect.min,
                                     egui::vec2(rect.width() * fraction, rect.height()),
                                 );
-                                ui.painter().rect_filled(filled, 2.0, egui::Color32::from_rgb(80, 140, 220));
+                                ui.painter().rect_filled(filled, 2.0, bar_color);
                                 ui.label(egui::RichText::new(format!(" {}", count)).size(11.0));
                             });
                         }
@@ -633,10 +739,15 @@ impl eframe::App for UmapApp {
                             .and_then(|i| self.cloud.categories.get(i))
                             .map(|s| s.as_str())
                             .unwrap_or("");
-                        let text = if category.is_empty() {
-                            format!("({:.4}, {:.4})", x, y)
-                        } else {
-                            format!("{}\n({:.4}, {:.4})", category, x, y)
+                        let label = self.hovered_point
+                            .and_then(|i| self.cloud.labels.get(i))
+                            .map(|s| s.as_str())
+                            .unwrap_or("");
+                        let text = match (category.is_empty(), label.is_empty()) {
+                            (true,  true)  => format!("({:.4}, {:.4})", x, y),
+                            (false, true)  => format!("label: {}\n({:.4}, {:.4})", category, x, y),
+                            (true,  false) => format!("id: {}\n({:.4}, {:.4})", label, x, y),
+                            (false, false) => format!("label: {}\nid: {}\n({:.4}, {:.4})", category, label, x, y),
                         };
                         let galley = painter.layout(
                             text,

@@ -48,8 +48,9 @@ fn main() -> eframe::Result<()> {
     let config = umap_viewer::config::Config::from_args()
         .expect("failed to load config (use --config <path>, default: config.yaml)");
 
-    // Verify data files exist before launching the GUI.
-    for path in [&config.coords_parquet, &config.labels_parquet] {
+    // Verify primary data files exist before launching the GUI.
+    let primary_labels = config.primary_labels_path().to_string();
+    for path in [&config.coords_parquet, &primary_labels] {
         if !std::path::Path::new(path).exists() {
             eprintln!("error: data file not found: {path}");
             eprintln!("hint: check the paths in config.yaml or use --config <path>");
@@ -57,13 +58,16 @@ fn main() -> eframe::Result<()> {
         }
     }
 
-    // --export-bin: write points.bin for the WASM build, then exit.
+    // --export-bin: write points.bin (with all label sets) for the WASM build, then exit.
     if config.export_bin {
-        umap_viewer::data::PointCloud::export_to_bin(
-            &config.coords_parquet,
-            &config.labels_parquet,
-            &config.output_bin,
-        ).expect("export failed");
+        let coords      = config.coords_parquet.clone();
+        let out_bin     = config.output_bin.clone();
+        let pairs       = config.label_pairs();
+        let color_files: Vec<Option<String>> = pairs.iter()
+            .map(|(name, _)| config.color_file_for(name).map(|s| s.to_string()))
+            .collect();
+        umap_viewer::data::PointCloud::export_to_bin(&coords, &pairs, &color_files, &out_bin)
+            .expect("export failed");
         return Ok(());
     }
 

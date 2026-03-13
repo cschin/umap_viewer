@@ -1,3 +1,7 @@
 coords_parquet: data/umap_coordinate.parquet
-labels_parquet: data/umap_label.parquet
-output_bin:     data/points.bin
+labels_parquet:
+  Cluster ID: data/umap_label.parquet
+  Cell Type:  data/umap_label2.parquet
+label_colors:
+  Cluster ID: data/cluster_colors.csv
+output_bin: data/points.bin

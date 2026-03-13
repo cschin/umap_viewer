@@ -75,14 +75,23 @@ pub struct Point {
     pub highlight: f32,
 }
 
+/// Maps a category name to an RGB colour (0.0–1.0 per channel).
+pub type ColorMap = std::collections::HashMap<String, (f32, f32, f32)>;
+
 pub struct PointCloud {
     pub points: Vec<Point>,
     pub bounds: [f32; 4], // xmin, xmax, ymin, ymax
     pub grid: SpatialGrid,
     /// Per-point ID string. May be empty if not loaded.
     pub labels: Vec<String>,
-    /// Per-point category string used for colouring and tooltips.
+    /// Per-point category string used for colouring and tooltips (active label set).
     pub categories: Vec<String>,
+    /// Display names for all available label sets.
+    pub label_set_names: Vec<String>,
+    /// Per-point categories for every label set (index matches label_set_names).
+    pub all_categories: Vec<Vec<String>>,
+    /// Per-label-set colour maps: category name → (r, g, b).  Empty map = use hue defaults.
+    pub category_color_maps: Vec<ColorMap>,
 }
 
 impl PointCloud {
@@ -123,7 +132,14 @@ impl PointCloud {
 
         let bounds = [xmin, xmax, ymin, ymax];
         let grid = SpatialGrid::build(&points, bounds);
-        Self { points, bounds, grid, labels: Vec::new(), categories: Vec::new() }
+        Self {
+            points, bounds, grid,
+            labels: Vec::new(),
+            categories: Vec::new(),
+            label_set_names: Vec::new(),
+            all_categories: Vec::new(),
+            category_color_maps: Vec::new(),
+        }
     }
 
     /// Apply a polygon selection: selected points get highlight=1.0, others 0.15.
@@ -140,45 +156,61 @@ impl PointCloud {
 
     /// Parse a pre-built binary blob (works on all targets including WASM).
     ///
-    /// Format:
-    ///   magic    : b"UMAP" (4 bytes)
-    ///   n_points : u32 le
-    ///   n_cats   : u32 le
-    ///   for each category: name_len u32 le + utf-8 bytes
-    ///   id_stride: u32 le  (fixed byte length of each ID; 0 = no IDs stored)
-    ///   x        : [f32 le; n_points]
-    ///   y        : [f32 le; n_points]
-    ///   cat_idx  : [u32 le; n_points]
-    ///   id_blob  : [u8; n_points * id_stride]  (only present when id_stride > 0)
+    /// Format (multiple label sets):
+    ///   magic        : b"UMAP" (4 bytes)
+    ///   n_points     : u32 le
+    ///   n_label_sets : u32 le
+    ///   id_stride    : u32 le
+    ///   for each label set:
+    ///     set_name : u32 le len + utf-8 bytes
+    ///     n_cats   : u32 le
+    ///     for each category: u32 le len + utf-8 bytes
+    ///     cat_idx  : [u32 le; n_points]
+    ///   x       : [f32 le; n_points]
+    ///   y       : [f32 le; n_points]
+    ///   id_blob : [u8; n_points * id_stride]
     pub fn from_bin(data: &[u8]) -> Result<Self, Box<dyn std::error::Error>> {
         let mut p = 0usize;
         macro_rules! read_u32 {
-            () => {{
-                let v = u32::from_le_bytes(data[p..p + 4].try_into()?);
-                p += 4;
-                v
-            }};
+            () => {{ let v = u32::from_le_bytes(data[p..p+4].try_into()?); p += 4; v }};
         }
         macro_rules! read_f32 {
-            () => {{
-                let v = f32::from_le_bytes(data[p..p + 4].try_into()?);
-                p += 4;
-                v
-            }};
+            () => {{ let v = f32::from_le_bytes(data[p..p+4].try_into()?); p += 4; v }};
+        }
+        macro_rules! read_str {
+            () => {{ let n = read_u32!() as usize; let s = std::str::from_utf8(&data[p..p+n])?.to_string(); p += n; s }};
         }
 
-        if &data[p..p + 4] != b"UMAP" { return Err("bad magic".into()); }
+        if &data[p..p+4] != b"UMAP" { return Err("bad magic".into()); }
         p += 4;
 
-        let n_points  = read_u32!() as usize;
-        let n_cats    = read_u32!() as usize;
-        let id_stride = read_u32!() as usize;
+        let n_points     = read_u32!() as usize;
+        let n_label_sets = read_u32!() as usize;
+        let id_stride    = read_u32!() as usize;
 
-        let mut cat_names: Vec<String> = Vec::with_capacity(n_cats);
-        for _ in 0..n_cats {
-            let len = read_u32!() as usize;
-            cat_names.push(std::str::from_utf8(&data[p..p + len])?.to_string());
-            p += len;
+        let mut label_set_names: Vec<String>        = Vec::with_capacity(n_label_sets);
+        let mut all_cat_names:   Vec<Vec<String>>   = Vec::with_capacity(n_label_sets);
+        let mut all_cat_indices: Vec<Vec<usize>>    = Vec::with_capacity(n_label_sets);
+
+        let mut category_color_maps: Vec<ColorMap> = Vec::with_capacity(n_label_sets);
+        for _ in 0..n_label_sets {
+            label_set_names.push(read_str!());
+            let n_cats = read_u32!() as usize;
+            let mut cat_names: Vec<String> = Vec::with_capacity(n_cats);
+            let mut color_map = ColorMap::new();
+            for _ in 0..n_cats {
+                let name = read_str!();
+                let r = data[p] as f32 / 255.0; p += 1;
+                let g = data[p] as f32 / 255.0; p += 1;
+                let b = data[p] as f32 / 255.0; p += 1;
+                color_map.insert(name.clone(), (r, g, b));
+                cat_names.push(name);
+            }
+            let mut indices: Vec<usize> = Vec::with_capacity(n_points);
+            for _ in 0..n_points { indices.push(read_u32!() as usize); }
+            all_cat_names.push(cat_names);
+            all_cat_indices.push(indices);
+            category_color_maps.push(color_map);
         }
 
         let mut xs = Vec::with_capacity(n_points);
@@ -186,79 +218,137 @@ impl PointCloud {
         for _ in 0..n_points { xs.push(read_f32!()); }
         for _ in 0..n_points { ys.push(read_f32!()); }
 
-        let mut cat_indices: Vec<usize> = Vec::with_capacity(n_points);
-        for _ in 0..n_points { cat_indices.push(read_u32!() as usize); }
-
-        // IDs: fixed-stride flat blob
         let mut labels = Vec::with_capacity(n_points);
         if id_stride > 0 {
             let blob = &data[p..p + n_points * id_stride];
             for i in 0..n_points {
                 let raw = &blob[i * id_stride..(i + 1) * id_stride];
-                let trimmed = raw.iter().rposition(|&b| b != 0).map(|p| &raw[..=p]).unwrap_or(&raw[..0]);
+                let trimmed = raw.iter().rposition(|&b| b != 0).map(|q| &raw[..=q]).unwrap_or(&raw[..0]);
                 labels.push(std::str::from_utf8(trimmed)?.to_string());
             }
         }
 
-        let n_cats_f = n_cats.max(1) as f32;
+        // Colour points by the first label set using embedded colours.
+        let first_names   = &all_cat_names[0];
+        let first_idx     = &all_cat_indices[0];
+        let first_colors  = &category_color_maps[0];
+        let n_cats_f      = first_names.len().max(1) as f32;
         let mut points     = Vec::with_capacity(n_points);
         let mut categories = Vec::with_capacity(n_points);
         for i in 0..n_points {
-            let (r, g, b) = hue_to_rgb(cat_indices[i] as f32 / n_cats_f);
+            let name = &first_names[first_idx[i]];
+            let (r, g, b) = first_colors.get(name)
+                .copied()
+                .unwrap_or_else(|| hue_to_rgb(first_idx[i] as f32 / n_cats_f));
             points.push(Point { x: xs[i], y: ys[i], r, g, b, highlight: 1.0 });
-            categories.push(cat_names[cat_indices[i]].clone());
+            categories.push(name.clone());
         }
 
-        let xmin = points.iter().map(|p| p.x).fold(f32::INFINITY, f32::min);
+        let all_categories: Vec<Vec<String>> = all_cat_names.iter().zip(all_cat_indices.iter())
+            .map(|(names, indices)| indices.iter().map(|&i| names[i].clone()).collect())
+            .collect();
+
+        let xmin = points.iter().map(|p| p.x).fold(f32::INFINITY,     f32::min);
         let xmax = points.iter().map(|p| p.x).fold(f32::NEG_INFINITY, f32::max);
-        let ymin = points.iter().map(|p| p.y).fold(f32::INFINITY, f32::min);
+        let ymin = points.iter().map(|p| p.y).fold(f32::INFINITY,     f32::min);
         let ymax = points.iter().map(|p| p.y).fold(f32::NEG_INFINITY, f32::max);
         let bounds = [xmin, xmax, ymin, ymax];
         let grid   = SpatialGrid::build(&points, bounds);
-        Ok(Self { points, bounds, grid, labels, categories })
+        Ok(Self { points, bounds, grid, labels, categories, label_set_names, all_categories, category_color_maps })
     }
 
-    /// Export to the compact binary format consumed by `from_bin`.
+    /// Export to the UMAP binary format consumed by `from_bin`.
+    /// `label_pairs` is `(display_name, labels_parquet_path)` per set.
+    /// `color_files` is a parallel slice of optional CSV paths (`None` = use hue defaults).
     /// Run the native binary with `--export-bin` to generate `data/points.bin`
     /// before doing a WASM build.
     #[cfg(not(target_arch = "wasm32"))]
     pub fn export_to_bin(
         coords_path: &str,
-        labels_path: &str,
+        label_pairs: &[(String, String)],
+        color_files: &[Option<String>],
         out_path: &str,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let cloud = Self::load_from_parquet(coords_path, labels_path)?;
-
-        // Build a deduplicated category catalog preserving first-seen order.
-        let mut cat_map: std::collections::HashMap<&str, u32> = Default::default();
-        let mut cat_names: Vec<&str> = Vec::new();
-        let mut cat_indices: Vec<u32> = Vec::with_capacity(cloud.points.len());
-        for cat in &cloud.categories {
-            let next = cat_map.len() as u32;
-            let idx = *cat_map.entry(cat.as_str()).or_insert_with(|| {
-                cat_names.push(cat.as_str());
-                next
-            });
-            cat_indices.push(idx);
-        }
-
+        let primary_path = label_pairs.first().map(|(_, p)| p.as_str()).unwrap_or("");
+        let cloud = Self::load_from_parquet(coords_path, primary_path)?;
         let n = cloud.points.len();
-        // Use the max ID byte length as stride; shorter IDs are null-padded.
         let id_stride = cloud.labels.iter().map(|s| s.len()).max().unwrap_or(0);
 
-        let mut buf: Vec<u8> = Vec::with_capacity(4 + 4 + 4 + 4 + n * (12 + id_stride));
+        // Deduplicate categories, preserving first-seen order.
+        let encode_cats = |cats: &[String]| -> (Vec<String>, Vec<u32>) {
+            let mut map: HashMap<&str, u32> = HashMap::new();
+            let mut names: Vec<String> = Vec::new();
+            let mut indices: Vec<u32>  = Vec::with_capacity(cats.len());
+            for cat in cats {
+                let next = map.len() as u32;
+                let idx = *map.entry(cat.as_str()).or_insert_with(|| { names.push(cat.clone()); next });
+                indices.push(idx);
+            }
+            (names, indices)
+        };
+
+        // Collect all label sets with their resolved colours.
+        let mut sets: Vec<(String, Vec<String>, Vec<u32>, ColorMap)> = Vec::new();
+        for (i, (set_name, labels_path)) in label_pairs.iter().enumerate() {
+            let cats = if labels_path == primary_path {
+                cloud.categories.clone()
+            } else {
+                cloud.load_categories_from_parquet(labels_path).unwrap_or_else(|e| {
+                    eprintln!("Warning: could not load {labels_path}: {e}");
+                    vec![String::new(); n]
+                })
+            };
+            let (names, indices) = encode_cats(&cats);
+
+            // Load custom colours if a CSV was provided, otherwise empty map (hue fallback).
+            let color_map = color_files.get(i)
+                .and_then(|opt| opt.as_deref())
+                .map(|path| {
+                    Self::load_color_csv(path).unwrap_or_else(|e| {
+                        eprintln!("Warning: could not load color CSV {path}: {e}");
+                        ColorMap::new()
+                    })
+                })
+                .unwrap_or_default();
+
+            sets.push((set_name.clone(), names, indices, color_map));
+        }
+
+        let write_str = |buf: &mut Vec<u8>, s: &str| {
+            buf.extend_from_slice(&(s.len() as u32).to_le_bytes());
+            buf.extend_from_slice(s.as_bytes());
+        };
+
+        let mut buf: Vec<u8> = Vec::new();
         buf.extend_from_slice(b"UMAP");
         buf.extend_from_slice(&(n as u32).to_le_bytes());
-        buf.extend_from_slice(&(cat_names.len() as u32).to_le_bytes());
+        buf.extend_from_slice(&(sets.len() as u32).to_le_bytes());
         buf.extend_from_slice(&(id_stride as u32).to_le_bytes());
-        for name in &cat_names {
-            let bytes = name.as_bytes();
-            buf.extend_from_slice(&(bytes.len() as u32).to_le_bytes());
-            buf.extend_from_slice(bytes);
+
+        for (set_idx, (set_name, cat_names, cat_indices, color_map)) in sets.iter().enumerate() {
+            let n_cats = cat_names.len();
+            let n_cats_f = n_cats.max(1) as f32;
+            // Precompute hue colours so each cat has a deterministic default.
+            let hue_colors: Vec<(f32,f32,f32)> = (0..n_cats)
+                .map(|i| hue_to_rgb(i as f32 / n_cats_f))
+                .collect();
+
+            write_str(&mut buf, set_name);
+            buf.extend_from_slice(&(n_cats as u32).to_le_bytes());
+            for (ci, name) in cat_names.iter().enumerate() {
+                write_str(&mut buf, name);
+                let (r, g, b) = color_map.get(name).copied().unwrap_or(hue_colors[ci]);
+                buf.push((r * 255.0).round() as u8);
+                buf.push((g * 255.0).round() as u8);
+                buf.push((b * 255.0).round() as u8);
+            }
+            for idx in cat_indices { buf.extend_from_slice(&idx.to_le_bytes()); }
+            let _ = set_idx; // suppress unused warning
         }
-        for p in &cloud.points { buf.extend_from_slice(&p.x.to_le_bytes()); }
-        for p in &cloud.points { buf.extend_from_slice(&p.y.to_le_bytes()); }
-        for idx in &cat_indices { buf.extend_from_slice(&idx.to_le_bytes()); }
+
+        for pt in &cloud.points { buf.extend_from_slice(&pt.x.to_le_bytes()); }
+        for pt in &cloud.points { buf.extend_from_slice(&pt.y.to_le_bytes()); }
+
         if id_stride > 0 {
             for id in &cloud.labels {
                 let bytes = id.as_bytes();
@@ -268,10 +358,7 @@ impl PointCloud {
         }
 
         std::fs::write(out_path, &buf)?;
-        println!(
-            "Exported {} points ({} categories, id_stride={}) → {}",
-            n, cat_names.len(), id_stride, out_path
-        );
+        println!("Exported {} points, {} label set(s), id_stride={} → {}", n, sets.len(), id_stride, out_path);
         Ok(())
     }
 
@@ -280,6 +367,84 @@ impl PointCloud {
         for p in &mut self.points {
             p.highlight = 1.0;
         }
+    }
+
+    /// Load categories from a labels parquet file (joined by id) and return
+    /// them in the same order as `self.labels` (the point ids).
+    /// Parquet schema: `id` (Utf8), `labels` (Utf8).
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn load_categories_from_parquet(&self, labels_path: &str)
+        -> Result<Vec<String>, Box<dyn std::error::Error>>
+    {
+        use polars::prelude::*;
+
+        let lf = LazyFrame::scan_parquet(labels_path.into(), Default::default())?
+            .select([col("id"), col("labels")])
+            .collect()?;
+
+        let ids_col  = lf.column("id")?.str()?;
+        let cats_col = lf.column("labels")?.str()?;
+
+        let mut label_map: HashMap<String, String> = HashMap::new();
+        for i in 0..lf.height() {
+            if let Some(id) = ids_col.get(i) {
+                let cat = cats_col.get(i).unwrap_or("").to_string();
+                label_map.insert(id.to_string(), cat);
+            }
+        }
+
+        Ok(self.labels.iter()
+            .map(|id| label_map.get(id).cloned().unwrap_or_default())
+            .collect())
+    }
+
+    /// Replace `self.categories` with `new_categories` and recompute point colours.
+    /// `color_map` maps category name → (r,g,b); pass an empty map to use hue defaults.
+    /// `new_categories` must have the same length as `self.points`.
+    pub fn apply_categories(&mut self, new_categories: Vec<String>, color_map: &ColorMap) {
+        let mut category_order: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+        let mut category_idx: Vec<usize> = Vec::with_capacity(new_categories.len());
+        for cat in &new_categories {
+            let next = category_order.len();
+            let idx  = *category_order.entry(cat.clone()).or_insert(next);
+            category_idx.push(idx);
+        }
+        let n_categories = category_order.len().max(1);
+        for (i, p) in self.points.iter_mut().enumerate() {
+            let cat = &new_categories[i];
+            let (r, g, b) = color_map.get(cat)
+                .copied()
+                .unwrap_or_else(|| hue_to_rgb(category_idx[i] as f32 / n_categories as f32));
+            p.r = r;
+            p.g = g;
+            p.b = b;
+        }
+        self.categories = new_categories;
+    }
+
+    /// Load a colour CSV file: two columns `label,color` where color is `#RRGGBB`.
+    /// Lines starting with `#` are treated as comments and skipped.
+    /// A header row `label,color` (case-insensitive) is also skipped automatically.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn load_color_csv(path: &str) -> Result<ColorMap, Box<dyn std::error::Error>> {
+        let text = std::fs::read_to_string(path)?;
+        let mut map = ColorMap::new();
+        for line in text.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') { continue; }
+            let mut parts = line.splitn(2, ',');
+            let label = match parts.next() { Some(l) => l.trim(), None => continue };
+            let color = match parts.next() { Some(c) => c.trim(), None => continue };
+            // Skip header row
+            if label.eq_ignore_ascii_case("label") { continue; }
+            let hex = color.trim_start_matches('#');
+            if hex.len() != 6 { continue; }
+            let r = u8::from_str_radix(&hex[0..2], 16)?;
+            let g = u8::from_str_radix(&hex[2..4], 16)?;
+            let b = u8::from_str_radix(&hex[4..6], 16)?;
+            map.insert(label.to_string(), (r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0));
+        }
+        Ok(map)
     }
 
     /// Load UMAP coordinates and labels from parquet files.
@@ -341,8 +506,15 @@ impl PointCloud {
         let ymax = points.iter().map(|p| p.y).fold(f32::NEG_INFINITY, f32::max);
 
         let bounds = [xmin, xmax, ymin, ymax];
-        let grid   = SpatialGrid::build(&points, bounds);
-        Ok(Self { points, bounds, grid, labels, categories })
+        let grid = SpatialGrid::build(&points, bounds);
+        let all_categories  = vec![categories.clone()];
+        let label_set_names = Vec::new(); // populated by the caller (with_config)
+        // Build default hue colour map for the initial label set.
+        let default_color_map: ColorMap = category_map.iter()
+            .map(|(name, &idx)| (name.clone(), hue_to_rgb(idx as f32 / n_categories as f32)))
+            .collect();
+        let category_color_maps = vec![default_color_map];
+        Ok(Self { points, bounds, grid, labels, categories, label_set_names, all_categories, category_color_maps })
     }
 }
 
@@ -372,7 +544,7 @@ fn box_muller(rng: &mut impl Rng, sigma: f32) -> (f32, f32) {
     (mag * theta.cos(), mag * theta.sin())
 }
 
-fn hue_to_rgb(h: f32) -> (f32, f32, f32) {
+pub fn hue_to_rgb(h: f32) -> (f32, f32, f32) {
     let h = h * 6.0;
     let i = h as u32;
     let f = h - i as f32;
