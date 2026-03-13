@@ -1,0 +1,655 @@
+use std::sync::Arc;
+
+use egui::{Context, Pos2, Vec2};
+use egui_extras::{Column, TableBuilder};
+use egui_wgpu::wgpu;
+
+use crate::data::PointCloud;
+use crate::point_renderer::{build_transform, PointRenderer, Uniforms};
+
+// ---------------------------------------------------------------------------
+// wgpu paint callback
+// ---------------------------------------------------------------------------
+
+struct PointsCallback {
+    transform: [[f32; 4]; 4],
+    point_size: f32,
+    viewport_aspect: f32,
+    alpha: f32,
+}
+
+pub struct PointsCallbackResources {
+    pub renderer: PointRenderer,
+}
+
+impl egui_wgpu::CallbackTrait for PointsCallback {
+    fn prepare(
+        &self,
+        _device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        _screen_descriptor: &egui_wgpu::ScreenDescriptor,
+        _egui_encoder: &mut wgpu::CommandEncoder,
+        resources: &mut egui_wgpu::CallbackResources,
+    ) -> Vec<wgpu::CommandBuffer> {
+        if let Some(res) = resources.get::<PointsCallbackResources>() {
+            let u = Uniforms {
+                transform: self.transform,
+                point_size: self.point_size,
+                viewport_aspect: self.viewport_aspect,
+                alpha: self.alpha,
+                _pad: [0.0; 1],
+            };
+            queue.write_buffer(res.renderer.uniform_buf(), 0, bytemuck::bytes_of(&u));
+        }
+        vec![]
+    }
+
+    fn paint(
+        &self,
+        _info: egui::PaintCallbackInfo,
+        rpass: &mut wgpu::RenderPass<'static>,
+        resources: &egui_wgpu::CallbackResources,
+    ) {
+        if let Some(res) = resources.get::<PointsCallbackResources>() {
+            // SAFETY: PointsCallbackResources is stored in CallbackResources which
+            // is owned by the wgpu renderer and outlives every paint callback.
+            let res: &'static PointsCallbackResources = unsafe { std::mem::transmute(res) };
+            res.renderer.draw(rpass);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Interaction mode
+// ---------------------------------------------------------------------------
+
+#[derive(PartialEq)]
+enum Mode {
+    Navigate,
+    SelectPolygon,
+}
+
+// ---------------------------------------------------------------------------
+// Table sort state
+// ---------------------------------------------------------------------------
+
+#[derive(PartialEq, Clone, Copy)]
+enum SortCol {
+    Row,
+    Category,
+    Label,
+    X,
+    Y,
+}
+
+// ---------------------------------------------------------------------------
+// Main App
+// ---------------------------------------------------------------------------
+
+pub struct UmapApp {
+    cloud: PointCloud,
+    // view state
+    pan: Vec2,
+    zoom: f32,
+    point_size: f32,
+    alpha: f32,
+    // navigate mode
+    drag_start: Option<(Pos2, Vec2)>,
+    // hover tooltip
+    hover_data_pos: Option<(f32, f32)>,
+    hovered_point: Option<usize>,
+    // selection mode
+    mode: Mode,
+    poly_verts: Vec<[f32; 2]>,       // data-space polygon vertices
+    selected_indices: Vec<usize>,    // indices into cloud.points
+    category_histogram: Vec<(String, usize)>, // (category, count) sorted descending
+    // table sort state
+    table_sort_col: SortCol,
+    table_sort_asc: bool,
+    sorted_rows: Vec<usize>,         // permutation of 0..selected_indices.len()
+    // wgpu queue for point buffer uploads
+    wgpu_queue: Arc<wgpu::Queue>,
+}
+
+impl UmapApp {
+    /// Shared initialisation once the PointCloud is ready.
+    fn build(cc: &eframe::CreationContext<'_>, cloud: PointCloud) -> Self {
+        // Register NotoSans as a fallback font for glyphs missing from the
+        // default Inter/Hack fonts (e.g. ▲▼ in the Geometric Shapes block).
+        let mut fonts = egui::FontDefinitions::default();
+        fonts.font_data.insert(
+            "SFNSMono".to_owned(),
+            egui::FontData::from_static(include_bytes!("../fonts/SFNSMono.ttf")),
+        );
+        fonts.families
+            .entry(egui::FontFamily::Proportional)
+            .or_default()
+            .push("SFNSMono".to_owned());
+        fonts.families
+            .entry(egui::FontFamily::Monospace)
+            .or_default()
+            .push("SFNSMono".to_owned());
+        cc.egui_ctx.set_fonts(fonts);
+
+        let wgpu_rs = cc.wgpu_render_state.as_ref().expect("wgpu render state");
+        let renderer = PointRenderer::new(&wgpu_rs.device, wgpu_rs.target_format, &cloud.points);
+        wgpu_rs
+            .renderer
+            .write()
+            .callback_resources
+            .insert(PointsCallbackResources { renderer });
+
+        Self {
+            cloud,
+            pan: Vec2::ZERO,
+            zoom: 1.0,
+            point_size: 4.0,
+            alpha: 0.5,
+            drag_start: None,
+            hover_data_pos: None,
+            hovered_point: None,
+            mode: Mode::Navigate,
+            poly_verts: Vec::new(),
+            selected_indices: Vec::new(),
+            category_histogram: Vec::new(),
+            table_sort_col: SortCol::Row,
+            table_sort_asc: true,
+            sorted_rows: Vec::new(),
+            wgpu_queue: wgpu_rs.queue.clone(),
+        }
+    }
+
+    /// Native constructor: load data from the paths in `config`.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn with_config(cc: &eframe::CreationContext<'_>, config: &crate::config::Config) -> Self {
+        let cloud = PointCloud::load_from_parquet(&config.coords_parquet, &config.labels_parquet)
+            .expect("failed to load parquet data");
+        Self::build(cc, cloud)
+    }
+
+    /// WASM constructor: load data from the embedded binary blob.
+    #[cfg(target_arch = "wasm32")]
+    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        let cloud = PointCloud::from_bin(
+            include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/data/points.bin"))
+        ).expect("failed to parse embedded points.bin");
+        Self::build(cc, cloud)
+    }
+
+    fn screen_to_data(&self, screen: Pos2, rect: egui::Rect) -> (f32, f32) {
+        let [xmin, xmax, ymin, ymax] = self.cloud.bounds;
+        let cx = (xmin + xmax) * 0.5 + self.pan.x;
+        let cy = (ymin + ymax) * 0.5 + self.pan.y;
+        let aspect = rect.width() / rect.height();
+        let span_x = (xmax - xmin) * 0.5 / self.zoom;
+        let span_y = (ymax - ymin) * 0.5 / self.zoom;
+        let (half_x, half_y) = if aspect >= 1.0 {
+            (span_x * aspect, span_y)
+        } else {
+            (span_x, span_y / aspect)
+        };
+        let nx = (screen.x - rect.left()) / rect.width() * 2.0 - 1.0;
+        let ny = -((screen.y - rect.top()) / rect.height() * 2.0 - 1.0);
+        (cx + nx * half_x, cy + ny * half_y)
+    }
+
+    fn data_to_screen(&self, dx: f32, dy: f32, rect: egui::Rect) -> Pos2 {
+        let [xmin, xmax, ymin, ymax] = self.cloud.bounds;
+        let cx = (xmin + xmax) * 0.5 + self.pan.x;
+        let cy = (ymin + ymax) * 0.5 + self.pan.y;
+        let aspect = rect.width() / rect.height();
+        let span_x = (xmax - xmin) * 0.5 / self.zoom;
+        let span_y = (ymax - ymin) * 0.5 / self.zoom;
+        let (half_x, half_y) = if aspect >= 1.0 {
+            (span_x * aspect, span_y)
+        } else {
+            (span_x, span_y / aspect)
+        };
+        let nx = (dx - cx) / half_x;
+        let ny = (dy - cy) / half_y;
+        Pos2 {
+            x: rect.left() + (nx + 1.0) / 2.0 * rect.width(),
+            y: rect.top() + (-ny + 1.0) / 2.0 * rect.height(),
+        }
+    }
+
+    fn hit_radius_data(&self, rect: egui::Rect) -> f32 {
+        let [_xmin, _xmax, ymin, ymax] = self.cloud.bounds;
+        let span_y = (ymax - ymin) * 0.5 / self.zoom;
+        (self.point_size / rect.height()) * span_y
+    }
+
+    fn build_category_histogram(&self) -> Vec<(String, usize)> {
+        let mut map: std::collections::HashMap<&str, usize> = Default::default();
+        for &i in &self.selected_indices {
+            let cat = self.cloud.categories.get(i).map(|s| s.as_str()).unwrap_or("");
+            *map.entry(cat).or_insert(0) += 1;
+        }
+        let mut counts: Vec<(String, usize)> = map.into_iter().map(|(k, v)| (k.to_string(), v)).collect();
+        counts.sort_by(|a, b| b.1.cmp(&a.1));
+        counts
+    }
+
+    fn rebuild_sorted_rows(&mut self) {
+        let mut order: Vec<usize> = (0..self.selected_indices.len()).collect();
+        let cloud = &self.cloud;
+        let selected = &self.selected_indices;
+        match self.table_sort_col {
+            SortCol::Row => {} // natural order
+            SortCol::Category => order.sort_by(|&a, &b| {
+                let ca = cloud.categories.get(selected[a]).map(|s| s.as_str()).unwrap_or("");
+                let cb = cloud.categories.get(selected[b]).map(|s| s.as_str()).unwrap_or("");
+                ca.cmp(cb)
+            }),
+            SortCol::Label => order.sort_by(|&a, &b| {
+                let la = cloud.labels.get(selected[a]).map(|s| s.as_str()).unwrap_or("");
+                let lb = cloud.labels.get(selected[b]).map(|s| s.as_str()).unwrap_or("");
+                la.cmp(lb)
+            }),
+            SortCol::X => order.sort_by(|&a, &b| {
+                cloud.points[selected[a]].x.partial_cmp(&cloud.points[selected[b]].x).unwrap_or(std::cmp::Ordering::Equal)
+            }),
+            SortCol::Y => order.sort_by(|&a, &b| {
+                cloud.points[selected[a]].y.partial_cmp(&cloud.points[selected[b]].y).unwrap_or(std::cmp::Ordering::Equal)
+            }),
+        }
+        if !self.table_sort_asc {
+            order.reverse();
+        }
+        self.sorted_rows = order;
+    }
+
+    fn upload_points(&self, frame: &eframe::Frame) {
+        if let Some(wgpu_rs) = frame.wgpu_render_state() {
+            let res_lock = wgpu_rs.renderer.read();
+            if let Some(res) = res_lock.callback_resources.get::<PointsCallbackResources>() {
+                res.renderer.update_points(&self.wgpu_queue, &self.cloud.points);
+            }
+        }
+    }
+}
+
+impl eframe::App for UmapApp {
+    fn update(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
+        // ---- side panel ----
+        egui::SidePanel::left("controls").min_width(200.0).show(ctx, |ui| {
+            ui.heading("UMAP Viewer");
+            ui.separator();
+            ui.label(format!("Points: {}", self.cloud.points.len()));
+            ui.add_space(8.0);
+
+            ui.label("Point size");
+            ui.add(egui::Slider::new(&mut self.point_size, 1.0..=20.0));
+            ui.label("Opacity");
+            ui.add(egui::Slider::new(&mut self.alpha, 0.01..=1.0));
+            ui.add_space(8.0);
+
+            ui.label(format!("Zoom: {:.2}x", self.zoom));
+            if ui.button("Reset view").clicked() {
+                self.pan = Vec2::ZERO;
+                self.zoom = 1.0;
+            }
+            ui.add_space(8.0);
+            ui.separator();
+
+            // ---- mode toggle ----
+            ui.label("Mode:");
+            ui.horizontal(|ui| {
+                if ui.selectable_label(self.mode == Mode::Navigate, "Navigate").clicked() {
+                    self.mode = Mode::Navigate;
+                    self.poly_verts.clear();
+                }
+                if ui.selectable_label(self.mode == Mode::SelectPolygon, "Select").clicked() {
+                    self.mode = Mode::SelectPolygon;
+                }
+            });
+            ui.add_space(4.0);
+
+            if self.mode == Mode::SelectPolygon {
+                ui.label(format!("Vertices: {}", self.poly_verts.len()));
+                ui.label("Left-click  → add vertex");
+                ui.label("Near start  → close & select");
+                ui.label("Right-click → cancel");
+                ui.add_space(4.0);
+            }
+
+            if !self.selected_indices.is_empty() {
+                ui.separator();
+                ui.label(format!("Selected: {}", self.selected_indices.len()));
+                if ui.button("Clear selection").clicked() {
+                    self.cloud.clear_selection();
+                    self.upload_points(frame);
+                    self.selected_indices.clear();
+                    self.category_histogram.clear();
+                    self.sorted_rows.clear();
+                    self.poly_verts.clear();
+                }
+            }
+
+            ui.add_space(8.0);
+            ui.separator();
+            ui.label("Cursor position:");
+            if let Some((x, y)) = self.hover_data_pos {
+                ui.monospace(format!("x = {:.4}", x));
+                ui.monospace(format!("y = {:.4}", y));
+            } else {
+                ui.monospace("x = —");
+                ui.monospace("y = —");
+            }
+            ui.add_space(8.0);
+            ui.separator();
+            ui.label("Controls:");
+            ui.label("  Scroll → zoom");
+            if self.mode == Mode::Navigate {
+                ui.label("  Drag   → pan");
+            }
+        });
+
+        // ---- bottom panel: selected point coordinates (sortable table) ----
+        if !self.selected_indices.is_empty() {
+            egui::TopBottomPanel::bottom("selected_points")
+                .resizable(true)
+                .min_height(80.0)
+                .max_height(300.0)
+                .show(ctx, |ui| {
+                    ui.strong(format!("Selected points ({}):", self.selected_indices.len()));
+
+                    let row_height = ui.text_style_height(&egui::TextStyle::Monospace) + 4.0;
+                    let total = self.sorted_rows.len();
+                    let sort_col = self.table_sort_col;
+                    let sort_asc = self.table_sort_asc;
+                    let selected_indices = &self.selected_indices;
+                    let sorted_rows = &self.sorted_rows;
+                    let cloud = &self.cloud;
+
+                    let mut clicked_col: Option<SortCol> = None;
+
+                    let col_label = |name: &str, col: SortCol| -> String {
+                        if sort_col == col {
+                            if sort_asc { format!("{name} ▲") } else { format!("{name} ▼") }
+                        } else {
+                            name.to_string()
+                        }
+                    };
+
+                    TableBuilder::new(ui)
+                        .striped(true)
+                        .resizable(true)
+                        .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
+                        .column(Column::initial(60.0).range(40.0..=120.0))
+                        .column(Column::initial(140.0).range(60.0..=400.0))
+                        .column(Column::remainder().range(80.0..=f32::INFINITY))
+                        .column(Column::initial(110.0).range(60.0..=200.0))
+                        .column(Column::initial(110.0).range(60.0..=200.0))
+                        .header(row_height, |mut header| {
+                            for (col, name) in [
+                                (SortCol::Row,      "#"),
+                                (SortCol::Category, "Category"),
+                                (SortCol::Label,    "Label"),
+                                (SortCol::X,        "X"),
+                                (SortCol::Y,        "Y"),
+                            ] {
+                                header.col(|ui| {
+                                    if ui.button(col_label(name, col)).clicked() {
+                                        clicked_col = Some(col);
+                                    }
+                                });
+                            }
+                        })
+                        .body(|body| {
+                            body.rows(row_height, total, |mut row| {
+                                let row_idx = row.index();
+                                let sel_idx = sorted_rows[row_idx];
+                                let idx = selected_indices[sel_idx];
+                                let p = &cloud.points[idx];
+                                let category = cloud.categories.get(idx).map(|s| s.as_str()).unwrap_or("");
+                                let label    = cloud.labels.get(idx).map(|s| s.as_str()).unwrap_or("");
+                                row.col(|ui| { ui.monospace(format!("{}", sel_idx + 1)); });
+                                row.col(|ui| { ui.label(category); });
+                                row.col(|ui| { ui.label(label); });
+                                row.col(|ui| { ui.monospace(format!("{:.6}", p.x)); });
+                                row.col(|ui| { ui.monospace(format!("{:.6}", p.y)); });
+                            });
+                        });
+
+                    if let Some(col) = clicked_col {
+                        if self.table_sort_col == col {
+                            self.table_sort_asc = !self.table_sort_asc;
+                        } else {
+                            self.table_sort_col = col;
+                            self.table_sort_asc = true;
+                        }
+                        self.rebuild_sorted_rows();
+                    }
+                });
+        }
+
+        // ---- right panel: category histogram ----
+        if !self.category_histogram.is_empty() {
+            egui::SidePanel::right("histogram")
+                .min_width(260.0)
+                .resizable(true)
+                .show(ctx, |ui| {
+                    ui.heading("Category histogram");
+                    ui.separator();
+
+                    let max_count = self.category_histogram.first().map(|(_, c)| *c).unwrap_or(1);
+                    let bar_max_w = 120.0_f32;
+
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        for (cat, count) in &self.category_histogram {
+                            let fraction = *count as f32 / max_count as f32;
+                            ui.horizontal(|ui| {
+                                // Right-justified label in a fixed-width slot.
+                                let (label_rect, _) = ui.allocate_exact_size(
+                                    egui::vec2(120.0, 16.0),
+                                    egui::Sense::hover(),
+                                );
+                                ui.painter().text(
+                                    label_rect.right_center(),
+                                    egui::Align2::RIGHT_CENTER,
+                                    cat,
+                                    egui::FontId::proportional(11.0),
+                                    ui.visuals().text_color(),
+                                );
+                                ui.add_space(6.0);
+                                // Bar aligned to left edge of its slot.
+                                let (rect, _) = ui.allocate_exact_size(
+                                    egui::vec2(bar_max_w, 14.0),
+                                    egui::Sense::hover(),
+                                );
+                                ui.painter().rect_filled(rect, 2.0, egui::Color32::from_gray(40));
+                                let filled = egui::Rect::from_min_size(
+                                    rect.min,
+                                    egui::vec2(rect.width() * fraction, rect.height()),
+                                );
+                                ui.painter().rect_filled(filled, 2.0, egui::Color32::from_rgb(80, 140, 220));
+                                ui.label(egui::RichText::new(format!(" {}", count)).size(11.0));
+                            });
+                        }
+                    });
+                });
+        }
+
+        // ---- canvas ----
+        egui::CentralPanel::default()
+            .frame(egui::Frame::canvas(&ctx.style()))
+            .show(ctx, |ui| {
+                let (rect, response) = ui.allocate_exact_size(
+                    ui.available_size(),
+                    egui::Sense::click_and_drag(),
+                );
+
+                let hover_screen = ui.input(|i| i.pointer.hover_pos())
+                    .filter(|p| rect.contains(*p));
+
+                // ---- scroll zoom (both modes) ----
+                let scroll = ui.input(|i| i.smooth_scroll_delta.y);
+                if scroll != 0.0 && response.hovered() {
+                    self.zoom *= (scroll * 0.002).exp();
+                    self.zoom = self.zoom.clamp(0.05, 500.0);
+                }
+
+                match self.mode {
+                    Mode::Navigate => {
+                        // pan via drag
+                        if response.drag_started() {
+                            self.drag_start =
+                                response.interact_pointer_pos().map(|p| (p, self.pan));
+                        }
+                        if response.dragged() {
+                            if let (Some((start_pos, start_pan)), Some(cur)) =
+                                (self.drag_start, response.interact_pointer_pos())
+                            {
+                                let delta = cur - start_pos;
+                                let [xmin, xmax, ymin, ymax] = self.cloud.bounds;
+                                let span_x = (xmax - xmin) / self.zoom;
+                                let span_y = (ymax - ymin) / self.zoom;
+                                self.pan = start_pan
+                                    - Vec2::new(
+                                        delta.x / rect.width() * span_x,
+                                        -delta.y / rect.height() * span_y,
+                                    );
+                            }
+                        }
+                        if response.drag_stopped() {
+                            self.drag_start = None;
+                        }
+
+                        // hover hit-test
+                        if let Some(screen) = hover_screen {
+                            let dp = self.screen_to_data(screen, rect);
+                            let radius = self.hit_radius_data(rect);
+                            self.hovered_point = self.cloud.grid.query_nearest(
+                                &self.cloud.points, dp.0, dp.1, radius,
+                            );
+                            self.hover_data_pos = self.hovered_point.map(|i| {
+                                let p = &self.cloud.points[i];
+                                (p.x, p.y)
+                            });
+                        } else {
+                            self.hovered_point = None;
+                            self.hover_data_pos = None;
+                        }
+                    }
+
+                    Mode::SelectPolygon => {
+                        self.drag_start = None;
+                        self.hovered_point = None;
+                        self.hover_data_pos = None;
+
+                        // Right-click → cancel polygon
+                        if response.secondary_clicked() {
+                            self.poly_verts.clear();
+                        }
+
+                        // Left-click → add vertex or close
+                        if response.clicked() {
+                            if let Some(screen) = response.interact_pointer_pos() {
+                                if !rect.contains(screen) { return; }
+
+                                // Check if close to first vertex (close the polygon)
+                                let close = self.poly_verts.first().map_or(false, |&v| {
+                                    let first_screen = self.data_to_screen(v[0], v[1], rect);
+                                    (screen - first_screen).length() < 12.0
+                                        && self.poly_verts.len() >= 3
+                                });
+
+                                if close {
+                                    let poly = self.poly_verts.clone();
+                                    self.selected_indices = self.cloud.apply_polygon_selection(&poly);
+                                    self.category_histogram = self.build_category_histogram();
+                                    self.rebuild_sorted_rows();
+                                    self.upload_points(frame);
+                                    self.poly_verts.clear();
+                                    self.mode = Mode::Navigate;
+                                } else {
+                                    let dp = self.screen_to_data(screen, rect);
+                                    self.poly_verts.push([dp.0, dp.1]);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ---- wgpu draw ----
+                let transform = build_transform(
+                    [self.pan.x, self.pan.y],
+                    self.zoom,
+                    rect.width(),
+                    rect.height(),
+                    self.cloud.bounds,
+                );
+                let clip_point_size = self.point_size / (rect.height() * 0.5);
+
+                ui.painter().add(egui_wgpu::Callback::new_paint_callback(
+                    rect,
+                    PointsCallback {
+                        transform,
+                        point_size: clip_point_size,
+                        viewport_aspect: rect.width() / rect.height(),
+                        alpha: self.alpha,
+                    },
+                ));
+
+                // ---- polygon overlay ----
+                if !self.poly_verts.is_empty() {
+                    let painter = ui.painter();
+                    let screen_verts: Vec<Pos2> = self.poly_verts.iter()
+                        .map(|&[x, y]| self.data_to_screen(x, y, rect))
+                        .collect();
+
+                    // Edges
+                    let stroke = egui::Stroke::new(1.5, egui::Color32::from_rgb(255, 220, 50));
+                    for w in screen_verts.windows(2) {
+                        painter.line_segment([w[0], w[1]], stroke);
+                    }
+                    // Preview edge: last vertex → cursor
+                    if let Some(cursor) = hover_screen {
+                        painter.line_segment(
+                            [*screen_verts.last().unwrap(), cursor],
+                            egui::Stroke::new(1.0, egui::Color32::from_rgba_premultiplied(255, 220, 50, 120)),
+                        );
+                    }
+                    // Vertices
+                    for (i, &sv) in screen_verts.iter().enumerate() {
+                        let (radius, color) = if i == 0 {
+                            (6.0, egui::Color32::from_rgb(255, 80, 80)) // first = red, click to close
+                        } else {
+                            (4.0, egui::Color32::from_rgb(255, 220, 50))
+                        };
+                        painter.circle_filled(sv, radius, color);
+                    }
+                }
+
+                // ---- tooltip ----
+                if let Some((x, y)) = self.hover_data_pos {
+                    if let Some(cursor) = hover_screen {
+                        let tooltip_pos = cursor + egui::vec2(12.0, -24.0);
+                        let painter = ui.painter();
+                        let category = self.hovered_point
+                            .and_then(|i| self.cloud.categories.get(i))
+                            .map(|s| s.as_str())
+                            .unwrap_or("");
+                        let text = if category.is_empty() {
+                            format!("({:.4}, {:.4})", x, y)
+                        } else {
+                            format!("{}\n({:.4}, {:.4})", category, x, y)
+                        };
+                        let galley = painter.layout(
+                            text,
+                            egui::FontId::monospace(11.0),
+                            egui::Color32::WHITE,
+                            400.0,
+                        );
+                        let bg = egui::Rect::from_min_size(
+                            tooltip_pos - egui::vec2(3.0, 3.0),
+                            galley.size() + egui::vec2(6.0, 6.0),
+                        );
+                        painter.rect_filled(bg, 3.0, egui::Color32::from_black_alpha(200));
+                        painter.galley(tooltip_pos, galley, egui::Color32::WHITE);
+                    }
+                }
+            });
+    }
+}

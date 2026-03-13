@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>UMAP Viewer</title>
+  <script>
+    // When served statically (not via trunk serve), trunk's hot-reload script
+    // contains an unsubstituted {{__TRUNK_ADDRESS__}} placeholder, causing a
+    // WebSocket SyntaxError in the console. Intercept it silently here so the
+    // error never reaches the native WebSocket constructor.
+    // When served via trunk serve the placeholder is replaced with a real
+    // address before the browser sees the HTML, so real WebSockets are unaffected.
+    (function () {
+      var _WS = window.WebSocket;
+      window.WebSocket = function (url, protocols) {
+        if (typeof url === 'string' && url.indexOf('{') !== -1) {
+          // Unsubstituted template — return a harmless stub
+          return { readyState: 3, close: function () {}, send: function () {},
+                   onopen: null, onclose: null, onmessage: null, onerror: null };
+        }
+        return protocols !== undefined ? new _WS(url, protocols) : new _WS(url);
+      };
+      window.WebSocket.prototype = _WS.prototype;
+      window.WebSocket.CONNECTING = 0;
+      window.WebSocket.OPEN      = 1;
+      window.WebSocket.CLOSING   = 2;
+      window.WebSocket.CLOSED    = 3;
+    })();
+  </script>
+  <style>
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #1c1c1c;
+    }
+    canvas {
+      display: block;
+      width: 100% !important;
+      height: 100% !important;
+    }
+    #loading {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #bbb;
+      font-family: monospace;
+      font-size: 1.2rem;
+      background: #1c1c1c;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="loading">Loading UMAP Viewer…</div>
+  <canvas id="the_canvas_id"></canvas>
+
+  <!-- trunk builds the bin target and runs wasm-bindgen on it -->
+  <link data-trunk rel="rust" data-bin="umap_viewer" data-wasm-opt="2" />
+
+  <script>
+    // Hide the loading overlay once the canvas starts receiving frames
+    const canvas = document.getElementById('the_canvas_id');
+    const observer = new MutationObserver(() => {
+      const loading = document.getElementById('loading');
+      if (loading) loading.remove();
+    });
+    observer.observe(canvas, { attributes: true });
+  </script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+# Trunk configuration — https://trunkrs.dev/configuration/
+[build]
+# Output directory for the built web app
+dist = "dist"
+
+# Uncomment to enable release mode for web builds (disables hot-reload):
+# release = true
+
+[serve]
+# Bind on all interfaces so the app is reachable from any host/IP.
+# trunk serve substitutes {{__TRUNK_ADDRESS__}} in the hot-reload script
+# with this address at request time — it must be reachable from the browser.
+address = "0.0.0.0"
+port = 8080
