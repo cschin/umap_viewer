@@ -372,13 +372,14 @@ impl eframe::App for UmapApp {
                         }
                     };
 
+                    egui::ScrollArea::horizontal().show(ui, |ui| {
                     TableBuilder::new(ui)
                         .striped(true)
                         .resizable(true)
                         .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
                         .column(Column::initial(60.0).range(40.0..=120.0))
                         .column(Column::initial(140.0).range(60.0..=400.0))
-                        .column(Column::remainder().range(80.0..=f32::INFINITY))
+                        .column(Column::initial(200.0).range(80.0..=f32::INFINITY))
                         .column(Column::initial(110.0).range(60.0..=200.0))
                         .column(Column::initial(110.0).range(60.0..=200.0))
                         .header(row_height, |mut header| {
@@ -411,6 +412,7 @@ impl eframe::App for UmapApp {
                                 row.col(|ui| { ui.monospace(format!("{:.6}", p.y)); });
                             });
                         });
+                    }); // ScrollArea::horizontal
 
                     if let Some(col) = clicked_col {
                         if self.table_sort_col == col {
