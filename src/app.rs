@@ -552,7 +552,8 @@ impl eframe::App for UmapApp {
                     ui.separator();
 
                     let max_count = self.category_histogram.first().map(|(_, c)| *c).unwrap_or(1);
-                    let bar_max_w = 120.0_f32;
+                    // Reserve space for the fixed label (120), gap (6), and count text (~50).
+                    let bar_max_w = (ui.available_width() - 120.0 - 6.0 - 50.0).max(40.0);
 
                     egui::ScrollArea::vertical().show(ui, |ui| {
                         for (cat, count) in &self.category_histogram {
