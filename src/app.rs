@@ -552,8 +552,10 @@ impl eframe::App for UmapApp {
                     ui.separator();
 
                     let max_count = self.category_histogram.first().map(|(_, c)| *c).unwrap_or(1);
-                    // Reserve space for the fixed label (120), gap (6), and count text (~50).
-                    let bar_max_w = (ui.available_width() - 120.0 - 6.0 - 50.0).max(40.0);
+                    const LABEL_W: f32 = 120.0;
+                    const GAP_W:   f32 = 6.0;
+                    const COUNT_W: f32 = 52.0;
+                    let bar_max_w = (ui.available_width() - LABEL_W - GAP_W - COUNT_W).max(40.0);
 
                     egui::ScrollArea::vertical().show(ui, |ui| {
                         for (cat, count) in &self.category_histogram {
@@ -568,9 +570,11 @@ impl eframe::App for UmapApp {
                                 ))
                                 .unwrap_or(egui::Color32::from_rgb(80, 140, 220));
                             ui.horizontal(|ui| {
-                                // Right-justified label in a fixed-width slot.
+                                // Zero item spacing so all widths are fully predictable.
+                                ui.spacing_mut().item_spacing.x = 0.0;
+                                // Right-justified category label.
                                 let (label_rect, _) = ui.allocate_exact_size(
-                                    egui::vec2(120.0, 16.0),
+                                    egui::vec2(LABEL_W, 16.0),
                                     egui::Sense::hover(),
                                 );
                                 ui.painter().text(
@@ -580,8 +584,9 @@ impl eframe::App for UmapApp {
                                     egui::FontId::proportional(11.0),
                                     ui.visuals().text_color(),
                                 );
-                                ui.add_space(6.0);
-                                // Bar aligned to left edge of its slot.
+                                // Fixed gap.
+                                ui.allocate_exact_size(egui::vec2(GAP_W, 16.0), egui::Sense::hover());
+                                // Bar.
                                 let (rect, _) = ui.allocate_exact_size(
                                     egui::vec2(bar_max_w, 14.0),
                                     egui::Sense::hover(),
@@ -592,7 +597,18 @@ impl eframe::App for UmapApp {
                                     egui::vec2(rect.width() * fraction, rect.height()),
                                 );
                                 ui.painter().rect_filled(filled, 2.0, bar_color);
-                                ui.label(egui::RichText::new(format!(" {}", count)).size(11.0));
+                                // Fixed-width count label.
+                                let (count_rect, _) = ui.allocate_exact_size(
+                                    egui::vec2(COUNT_W, 16.0),
+                                    egui::Sense::hover(),
+                                );
+                                ui.painter().text(
+                                    count_rect.left_center(),
+                                    egui::Align2::LEFT_CENTER,
+                                    format!(" {}", count),
+                                    egui::FontId::proportional(11.0),
+                                    ui.visuals().text_color(),
+                                );
                             });
                         }
                     });
