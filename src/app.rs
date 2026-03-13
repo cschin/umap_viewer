@@ -494,8 +494,8 @@ impl eframe::App for UmapApp {
                         .header(row_height, |mut header| {
                             for (col, name) in [
                                 (SortCol::Row,      "#"),
-                                (SortCol::Category, "Category"),
-                                (SortCol::Label,    "Label"),
+                                (SortCol::Category, "Label"),
+                                (SortCol::Label,    "ID"),
                                 (SortCol::X,        "X"),
                                 (SortCol::Y,        "Y"),
                             ] {

@@ -14,7 +14,7 @@ An interactive GPU-accelerated viewer for [UMAP](https://umap-learn.readthedocs.
 - **Multiple label sets** — load several label/category parquet files and switch between them instantly from the left panel; colours update live on both native and WASM builds
 - **Custom colours** — optional per-label-set colour CSV files (`label,#RRGGBB`); unspecified labels fall back to evenly-spaced hues
 - **Category histogram** — right panel shows the distribution of selected points across categories, bars coloured to match the scatter plot
-- **Sortable table** — bottom panel lists selected points with sortable columns: `#`, `Category`, `Label`, `X`, `Y`
+- **Sortable table** — bottom panel lists selected points with sortable columns: `#`, `Label`, `ID`, `X`, `Y`
 - **Hover tooltip** — shows `label: <category>`, `id: <point id>`, and cursor data coordinates for the nearest point
 - **Dual target** — identical code base builds for macOS / Linux / Windows (native) and the browser (WASM / WebGL2)
 
