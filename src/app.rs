@@ -635,7 +635,7 @@ impl eframe::App for UmapApp {
                                     );
                                 }
                                 let text_color = if is_focused {
-                                    egui::Color32::from_rgb(255, 220, 50)
+                                    egui::Color32::BLACK
                                 } else {
                                     ui.visuals().text_color()
                                 };
