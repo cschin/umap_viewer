@@ -104,6 +104,7 @@ pub struct UmapApp {
     poly_closed: bool,               // true after selection is confirmed
     selected_indices: Vec<usize>,    // indices into cloud.points
     focused_category: Option<String>, // category highlighted via histogram click
+    focus_size_scale: f32,            // size multiplier for focused points
     category_histogram: Vec<(String, usize)>, // (category, count) sorted descending
     // table sort state
     table_sort_col: SortCol,
@@ -160,6 +161,7 @@ impl UmapApp {
             poly_closed: false,
             selected_indices: Vec::new(),
             focused_category: None,
+            focus_size_scale: 2.0,
             category_histogram: Vec::new(),
             table_sort_col: SortCol::Row,
             table_sort_asc: true,
@@ -348,7 +350,7 @@ impl UmapApp {
                     let in_cat = self.cloud.categories.get(i).map(|c| {
                         if cat == "(unlabeled)" { c.is_empty() } else { c == cat }
                     }).unwrap_or(false);
-                    if in_sel && in_cat { (1.0, 2.0) } else { (0.15, 1.0) }
+                    if in_sel && in_cat { (1.0, self.focus_size_scale) } else { (0.15, 1.0) }
                 }
                 None => {
                     let h = if selected_set.is_empty() || selected_set.contains(&i) { 1.0 } else { 0.15 };
@@ -411,6 +413,15 @@ impl eframe::App for UmapApp {
             ui.add(egui::Slider::new(&mut self.point_size, 1.0..=20.0));
             ui.label("Opacity");
             ui.add(egui::Slider::new(&mut self.alpha, 0.01..=1.0));
+            ui.label("Focus size scale");
+            let focus_changed = ui.add(
+                egui::Slider::new(&mut self.focus_size_scale, 1.0..=16.0).step_by(1.0)
+            ).changed();
+            if focus_changed {
+                if self.focused_category.is_some() {
+                    self.apply_category_focus(frame);
+                }
+            }
             ui.add_space(8.0);
 
             ui.label(format!("Zoom: {:.2}x", self.zoom));
