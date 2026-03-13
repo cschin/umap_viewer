@@ -2,10 +2,8 @@
 
 An interactive GPU-accelerated viewer for [UMAP](https://umap-learn.readthedocs.io/) 2D embeddings. Supports hundreds of thousands of points with smooth pan/zoom, polygon selection, category filtering, and a sortable data table. Runs as a native desktop app or in the browser via WebAssembly.
 
-![Controls: pan, zoom, polygon select, category histogram, sortable table](misc/umap_viewer_screenshot.mp4)
-<video src="misc/umap_viewer_screenshot.mp4" controls width="400">
-  Your browser does not support the video tag.
-</video>
+![Controls: pan, zoom, polygon select, category histogram, sortable table](misc/umap_viewer_screenshot.png)
+
 ---
 
 ## Features
