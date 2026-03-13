@@ -13,8 +13,8 @@ An interactive GPU-accelerated viewer for [UMAP](https://umap-learn.readthedocs.
 - **Polygon selection** — click to place vertices, close near the start to select; right-click to cancel
 - **Multiple label sets** — load several label/category parquet files and switch between them instantly from the left panel; colours update live on both native and WASM builds
 - **Custom colours** — optional per-label-set colour CSV files (`label,#RRGGBB`); unspecified labels fall back to evenly-spaced hues
-- **Category histogram** — right panel shows the distribution of selected points across categories, bars coloured to match the scatter plot; click a category label to highlight only that category's points in the scatter plot (click again to deselect)
-- **Sortable table** — bottom panel lists selected points with sortable columns: `#`, `Label`, `ID`, `X`, `Y`
+- **Category histogram** — right panel shows the distribution of selected points across categories, bars coloured to match the scatter plot; click a category label to highlight only that category's points at 2× size (click again to deselect); points with no label appear as `(unlabeled)`
+- **Sortable table** — bottom panel lists selected points with sortable columns: `#`, `Label`, `ID`, `X`, `Y`; points with no label show `(unlabeled)` and points with no ID show `(no id)`
 - **Export selected IDs** — save the IDs of all selected points to a text file (one ID per line); native build opens a save dialog defaulting to `~/Downloads`; WASM build triggers a browser download
 - **Hover tooltip** — shows `label: <category>`, `id: <point id>`, and cursor data coordinates for the nearest point
 - **Dual target** — identical code base builds for macOS / Linux / Windows (native) and the browser (WASM / WebGL2)
@@ -304,7 +304,9 @@ After closing a polygon the selection is confirmed and the polygon outline remai
 
 ### Category focus
 
-Clicking a category label in the histogram panel isolates that category within the current selection: only points belonging to that category stay at full brightness; all other points (selected or not) are dimmed to 15% opacity. The active label is highlighted in yellow. Clicking the same label again restores the normal selection highlight. Focus is automatically cleared when a new polygon is drawn, the selection is cleared, or the view is reset.
+Clicking a category label in the histogram panel isolates that category within the current selection: only points belonging to that category stay at full brightness and are rendered at **2× their normal size**; all other points are dimmed to 15% opacity. The active label is highlighted with a yellow background and black text. Clicking the same label again restores the normal selection highlight. Focus is automatically cleared when a new polygon is drawn, the selection is cleared, or the view is reset.
+
+Points that have no assigned label appear as `(unlabeled)` in both the histogram and the table. Clicking `(unlabeled)` focuses those points just like any named category. Points with no ID string show `(no id)` in the ID column of the table.
 
 Point colours come from the active label set's colour map (custom CSV if provided, otherwise evenly-spaced hues). The histogram bars use the same colours as the scatter plot. Selected points are highlighted; unselected points are dimmed to 15% opacity. The hover tooltip shows `label: <category>`, `id: <point id>`, and data coordinates.
 

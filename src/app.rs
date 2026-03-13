@@ -299,7 +299,9 @@ impl UmapApp {
             let cat = self.cloud.categories.get(i).map(|s| s.as_str()).unwrap_or("");
             *map.entry(cat).or_insert(0) += 1;
         }
-        let mut counts: Vec<(String, usize)> = map.into_iter().map(|(k, v)| (k.to_string(), v)).collect();
+        let mut counts: Vec<(String, usize)> = map.into_iter()
+            .map(|(k, v)| (if k.is_empty() { "(unlabeled)".to_string() } else { k.to_string() }, v))
+            .collect();
         counts.sort_by(|a, b| b.1.cmp(&a.1));
         counts
     }
@@ -343,7 +345,9 @@ impl UmapApp {
             let (highlight, size) = match &self.focused_category {
                 Some(cat) => {
                     let in_sel = selected_set.contains(&i);
-                    let in_cat = self.cloud.categories.get(i).map(|c| c == cat).unwrap_or(false);
+                    let in_cat = self.cloud.categories.get(i).map(|c| {
+                        if cat == "(unlabeled)" { c.is_empty() } else { c == cat }
+                    }).unwrap_or(false);
                     if in_sel && in_cat { (1.0, 2.0) } else { (0.15, 1.0) }
                 }
                 None => {
@@ -553,9 +557,11 @@ impl eframe::App for UmapApp {
                                 let p = &cloud.points[idx];
                                 let category = cloud.categories.get(idx).map(|s| s.as_str()).unwrap_or("");
                                 let label    = cloud.labels.get(idx).map(|s| s.as_str()).unwrap_or("");
+                                let category_display = if category.is_empty() { "(unlabeled)" } else { category };
+                                let label_display    = if label.is_empty()    { "(no id)"    } else { label    };
                                 row.col(|ui| { ui.monospace(format!("{}", sel_idx + 1)); });
-                                row.col(|ui| { ui.label(category); });
-                                row.col(|ui| { ui.label(label); });
+                                row.col(|ui| { ui.label(category_display); });
+                                row.col(|ui| { ui.label(label_display); });
                                 row.col(|ui| { ui.monospace(format!("{:.6}", p.x)); });
                                 row.col(|ui| { ui.monospace(format!("{:.6}", p.y)); });
                             });
