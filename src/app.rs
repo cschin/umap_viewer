@@ -101,6 +101,7 @@ pub struct UmapApp {
     // selection mode
     mode: Mode,
     poly_verts: Vec<[f32; 2]>,       // data-space polygon vertices
+    poly_closed: bool,               // true after selection is confirmed
     selected_indices: Vec<usize>,    // indices into cloud.points
     category_histogram: Vec<(String, usize)>, // (category, count) sorted descending
     // table sort state
@@ -155,6 +156,7 @@ impl UmapApp {
             hovered_point: None,
             mode: Mode::Navigate,
             poly_verts: Vec::new(),
+            poly_closed: false,
             selected_indices: Vec::new(),
             category_histogram: Vec::new(),
             table_sort_col: SortCol::Row,
@@ -383,6 +385,14 @@ impl eframe::App for UmapApp {
 
             ui.label(format!("Zoom: {:.2}x", self.zoom));
             if ui.button("Reset view").clicked() {
+                self.cloud.clear_selection();
+                self.upload_points(frame);
+                self.selected_indices.clear();
+                self.category_histogram.clear();
+                self.sorted_rows.clear();
+                self.poly_verts.clear();
+                self.poly_closed = false;
+                self.mode = Mode::Navigate;
                 self.pan = Vec2::ZERO;
                 self.zoom = 1.0;
             }
@@ -395,6 +405,7 @@ impl eframe::App for UmapApp {
                 if ui.selectable_label(self.mode == Mode::Navigate, "Navigate").clicked() {
                     self.mode = Mode::Navigate;
                     self.poly_verts.clear();
+                    self.poly_closed = false;
                 }
                 if ui.selectable_label(self.mode == Mode::SelectPolygon, "Select").clicked() {
                     self.mode = Mode::SelectPolygon;
@@ -420,6 +431,7 @@ impl eframe::App for UmapApp {
                     self.category_histogram.clear();
                     self.sorted_rows.clear();
                     self.poly_verts.clear();
+                    self.poly_closed = false;
                 }
             }
 
@@ -649,6 +661,7 @@ impl eframe::App for UmapApp {
                         // Right-click → cancel polygon
                         if response.secondary_clicked() {
                             self.poly_verts.clear();
+                            self.poly_closed = false;
                         }
 
                         // Left-click → add vertex or close
@@ -669,9 +682,14 @@ impl eframe::App for UmapApp {
                                     self.category_histogram = self.build_category_histogram();
                                     self.rebuild_sorted_rows();
                                     self.upload_points(frame);
-                                    self.poly_verts.clear();
+                                    self.poly_closed = true;
                                     self.mode = Mode::Navigate;
                                 } else {
+                                    if self.poly_closed {
+                                        // Start a new polygon: keep old selection visible, just reset polygon
+                                        self.poly_verts.clear();
+                                        self.poly_closed = false;
+                                    }
                                     let dp = self.screen_to_data(screen, rect);
                                     self.poly_verts.push([dp.0, dp.1]);
                                 }
@@ -712,17 +730,27 @@ impl eframe::App for UmapApp {
                     for w in screen_verts.windows(2) {
                         painter.line_segment([w[0], w[1]], stroke);
                     }
-                    // Preview edge: last vertex → cursor
-                    if let Some(cursor) = hover_screen {
-                        painter.line_segment(
-                            [*screen_verts.last().unwrap(), cursor],
-                            egui::Stroke::new(1.0, egui::Color32::from_rgba_premultiplied(255, 220, 50, 120)),
-                        );
+                    if self.poly_closed {
+                        // Closing edge: last vertex → first vertex
+                        if screen_verts.len() >= 2 {
+                            painter.line_segment(
+                                [*screen_verts.last().unwrap(), screen_verts[0]],
+                                stroke,
+                            );
+                        }
+                    } else {
+                        // Preview edge: last vertex → cursor
+                        if let Some(cursor) = hover_screen {
+                            painter.line_segment(
+                                [*screen_verts.last().unwrap(), cursor],
+                                egui::Stroke::new(1.0, egui::Color32::from_rgba_premultiplied(255, 220, 50, 120)),
+                            );
+                        }
                     }
                     // Vertices
                     for (i, &sv) in screen_verts.iter().enumerate() {
-                        let (radius, color) = if i == 0 {
-                            (6.0, egui::Color32::from_rgb(255, 80, 80)) // first = red, click to close
+                        let (radius, color) = if !self.poly_closed && i == 0 {
+                            (6.0, egui::Color32::from_rgb(255, 80, 80)) // first = red while open
                         } else {
                             (4.0, egui::Color32::from_rgb(255, 220, 50))
                         };
