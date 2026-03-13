@@ -69,10 +69,37 @@ Parquet files  ──►  PointCloud  ──►  Vec<Point> (x,y,r,g,b,highlight
 
 Two parquet files joined on `id`:
 
-| File | Required columns | Types |
-|---|---|---|
-| `coords_parquet` | `id`, `coordinates` | `Utf8`, `FixedSizeList<f32, 2>` |
-| `labels_parquet` | `id`, `labels` | `Utf8`, `Utf8` |
+| File | Required columns | Arrow / Parquet type | Notes |
+|---|---|---|---|
+| `coords_parquet` | `id` | `Utf8` / `LargeUtf8` | Unique point identifier |
+| | `coordinates` | `FixedSizeList<Float32>[2]` | `[x, y]` — 2D UMAP embedding |
+| `labels_parquet` | `id` | `Utf8` / `LargeUtf8` | Must match IDs in coords file |
+| | `labels` | `Utf8` / `LargeUtf8` | Category / class name for colouring |
+
+The two files are joined on `id` (left join: points with no matching label get an empty category). Column names are fixed; extra columns are ignored.
+
+#### Generating the files with Python
+
+```python
+import numpy as np
+import polars as pl
+
+# coords — FixedSizeList<f32, 2>
+coords = pl.DataFrame({
+    "id": [f"pt{i}" for i in range(n)],
+    "coordinates": pl.Series(
+        embedding.astype("float32").tolist()   # shape (n, 2)
+    ).cast(pl.Array(pl.Float32, 2)),
+})
+coords.write_parquet("data/umap_coordinate.parquet")
+
+# labels
+labels = pl.DataFrame({
+    "id":     [f"pt{i}" for i in range(n)],
+    "labels": category_strings,               # list[str], length n
+})
+labels.write_parquet("data/umap_label.parquet")
+```
 
 ### Intermediate: `points.bin` (WASM builds)
 
