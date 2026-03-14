@@ -463,6 +463,27 @@ impl eframe::App for UmapApp {
                 ui.add_space(4.0);
             }
 
+            if ui.button("Select All").clicked() {
+                let [xmin, xmax, ymin, ymax] = self.cloud.bounds;
+                let margin_x = (xmax - xmin) * 0.05;
+                let margin_y = (ymax - ymin) * 0.05;
+                let bbox = vec![
+                    [xmin - margin_x, ymin - margin_y],
+                    [xmax + margin_x, ymin - margin_y],
+                    [xmax + margin_x, ymax + margin_y],
+                    [xmin - margin_x, ymax + margin_y],
+                ];
+                self.selected_indices = self.cloud.apply_polygon_selection(&bbox);
+                self.focused_category = None;
+                self.category_histogram = self.build_category_histogram();
+                self.rebuild_sorted_rows();
+                self.upload_points(frame);
+                self.poly_verts = bbox;
+                self.poly_closed = true;
+                self.mode = Mode::Navigate;
+            }
+            ui.add_space(4.0);
+
             if !self.selected_indices.is_empty() {
                 ui.separator();
                 ui.label(format!("Selected: {}", self.selected_indices.len()));
