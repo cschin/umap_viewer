@@ -751,8 +751,27 @@ impl eframe::App for UmapApp {
                 // ---- scroll zoom (both modes) ----
                 let scroll = ui.input(|i| i.smooth_scroll_delta.y);
                 if scroll != 0.0 && response.hovered() {
-                    self.zoom *= (scroll * 0.002).exp();
-                    self.zoom = self.zoom.clamp(0.05, 500.0);
+                    let old_zoom = self.zoom;
+                    let new_zoom = (self.zoom * (scroll * 0.002).exp()).clamp(0.05, 500.0);
+                    let actual_f = new_zoom / old_zoom;
+                    // Zoom toward cursor: adjust pan so the data point under the
+                    // cursor stays fixed on screen.
+                    if let Some(cursor) = hover_screen {
+                        let [xmin, xmax, ymin, ymax] = self.cloud.bounds;
+                        let aspect = rect.width() / rect.height();
+                        let span_x = (xmax - xmin) * 0.5 / old_zoom;
+                        let span_y = (ymax - ymin) * 0.5 / old_zoom;
+                        let (half_x, half_y) = if aspect >= 1.0 {
+                            (span_x * aspect, span_y)
+                        } else {
+                            (span_x, span_y / aspect)
+                        };
+                        let nx = (cursor.x - rect.left()) / rect.width() * 2.0 - 1.0;
+                        let ny = -((cursor.y - rect.top()) / rect.height() * 2.0 - 1.0);
+                        self.pan.x += nx * half_x * (1.0 - 1.0 / actual_f);
+                        self.pan.y += ny * half_y * (1.0 - 1.0 / actual_f);
+                    }
+                    self.zoom = new_zoom;
                 }
 
                 match self.mode {
