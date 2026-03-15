@@ -384,34 +384,50 @@ impl UmapApp {
 
 impl eframe::App for UmapApp {
     fn update(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
-        // ---- left panel: collapsed tab (WASM / mobile only) ----
-        #[cfg(target_arch = "wasm32")]
+        // ---- left panel: collapsed tab ----
         if !self.left_panel_visible {
             egui::SidePanel::left("controls_tab")
                 .resizable(false)
-                .min_width(24.0)
-                .max_width(24.0)
+                .min_width(28.0)
+                .max_width(28.0)
                 .show(ctx, |ui| {
-                    ui.centered_and_justified(|ui| {
-                        if ui.button("▶").on_hover_text("Show controls").clicked() {
-                            self.left_panel_visible = true;
-                        }
+                    let rect = ui.available_rect_before_wrap();
+                    // Whole strip is clickable to expand.
+                    let resp = ui.allocate_rect(rect, egui::Sense::click());
+                    if resp.on_hover_text("Show controls").clicked() {
+                        self.left_panel_visible = true;
+                    }
+                    // "▶  Controls" rotated 90° clockwise (reads top → bottom).
+                    let text = "▲  Controls";
+                    let font_id = egui::FontId::proportional(12.0);
+                    let color = ui.visuals().text_color();
+                    let galley = ui.fonts(|f| f.layout_no_wrap(
+                        text.to_string(), font_id, color,
+                    ));
+                    let w = galley.size().x;
+                    let h = galley.size().y;
+                    // After π/2 CW rotation around `pos`, the visual bounding box
+                    // is (h wide, w tall) and its center is at pos + (-h/2, w/2).
+                    // Solve for pos so the center lands on rect.center().
+                    let c = rect.center();
+                    let pos = egui::pos2(c.x + h * 0.5, c.y - w * 0.5);
+                    ui.painter().add(egui::epaint::TextShape {
+                        pos,
+                        galley,
+                        underline: egui::Stroke::NONE,
+                        fallback_color: color,
+                        override_text_color: None,
+                        opacity_factor: 1.0,
+                        angle: std::f32::consts::FRAC_PI_2,
                     });
                 });
         }
 
         // ---- left panel: full controls ----
-        let show_left = {
-            #[cfg(target_arch = "wasm32")]
-            { self.left_panel_visible }
-            #[cfg(not(target_arch = "wasm32"))]
-            { true }
-        };
-        if show_left {
+        if self.left_panel_visible {
         egui::SidePanel::left("controls").min_width(200.0).show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.heading("UMAP Viewer");
-                #[cfg(target_arch = "wasm32")]
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.small_button("◀").on_hover_text("Hide controls").clicked() {
                         self.left_panel_visible = false;
@@ -682,13 +698,34 @@ impl eframe::App for UmapApp {
         if !self.category_histogram.is_empty() && !self.histogram_visible {
             egui::SidePanel::right("histogram_tab")
                 .resizable(false)
-                .min_width(24.0)
-                .max_width(24.0)
+                .min_width(28.0)
+                .max_width(28.0)
                 .show(ctx, |ui| {
-                    ui.centered_and_justified(|ui| {
-                        if ui.button("◀").on_hover_text("Show histogram").clicked() {
-                            self.histogram_visible = true;
-                        }
+                    let rect = ui.available_rect_before_wrap();
+                    let resp = ui.allocate_rect(rect, egui::Sense::click());
+                    if resp.on_hover_text("Show histogram").clicked() {
+                        self.histogram_visible = true;
+                    }
+                    // "▼  Selected Labels" rotated 90° CW (reads top → bottom).
+                    // ▼ points down; after 90° CW rotation it points left (toward the panel).
+                    let text = "▼  Selected Labels";
+                    let font_id = egui::FontId::proportional(12.0);
+                    let color = ui.visuals().text_color();
+                    let galley = ui.fonts(|f| f.layout_no_wrap(
+                        text.to_string(), font_id, color,
+                    ));
+                    let w = galley.size().x;
+                    let h = galley.size().y;
+                    let c = rect.center();
+                    let pos = egui::pos2(c.x + h * 0.5, c.y - w * 0.5);
+                    ui.painter().add(egui::epaint::TextShape {
+                        pos,
+                        galley,
+                        underline: egui::Stroke::NONE,
+                        fallback_color: color,
+                        override_text_color: None,
+                        opacity_factor: 1.0,
+                        angle: std::f32::consts::FRAC_PI_2,
                     });
                 });
         }
