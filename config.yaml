@@ -1,7 +1,10 @@
-coords_parquet: data/umap_coordinate.parquet
+coords_parquet: data/arxiv_ml_data_map.parquet
 labels_parquet:
-  Cluster ID: data/umap_label.parquet
-  Cell Type:  data/umap_label2.parquet
-label_colors:
-  Cluster ID: data/cluster_colors.csv
+  Layer 0: data/arxiv_ml_layer0_cluster_labels.parquet
+  Layer 1: data/arxiv_ml_layer1_cluster_labels.parquet
+  Layer 2: data/arxiv_ml_layer2_cluster_labels.parquet
+  Layer 3: data/arxiv_ml_layer3_cluster_labels.parquet
+  Layer 4: data/arxiv_ml_layer4_cluster_labels.parquet
+#label_colors:
+#   Layer 0: data/cluster_colors.csv
 output_bin: data/points.bin

@@ -353,7 +353,10 @@ impl UmapApp {
                     if in_sel && in_cat { (1.0, self.focus_size_scale) } else { (0.15, 1.0) }
                 }
                 None => {
-                    let h = if selected_set.is_empty() || selected_set.contains(&i) { 1.0 } else { 0.15 };
+                    let in_sel = selected_set.is_empty() || selected_set.contains(&i);
+                    let unlabeled = self.cloud.categories.get(i).map(|c| c.is_empty()).unwrap_or(false);
+                    let base_h = if in_sel { 1.0 } else { 0.15 };
+                    let h = if unlabeled { base_h * 0.5 } else { base_h };
                     (h, 1.0)
                 }
             };
@@ -399,8 +402,9 @@ impl eframe::App for UmapApp {
                     let empty = crate::data::ColorMap::new();
                     let cmap  = self.color_maps.get(self.selected_label_idx).unwrap_or(&empty);
                     self.cloud.apply_categories(new_cats, cmap);
-                    self.upload_points(frame);
-                    // Rebuild histogram if there is an active selection.
+                    // Re-derive all highlights for the new label set (handles
+                    // selection state, focus, and relative unlabeled dim).
+                    self.apply_category_focus(frame);
                     if !self.selected_indices.is_empty() {
                         self.category_histogram = self.build_category_histogram();
                     }

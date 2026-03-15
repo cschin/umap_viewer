@@ -145,6 +145,7 @@ impl PointCloud {
     }
 
     /// Apply a polygon selection: selected points get highlight=1.0, others 0.15.
+    /// Unlabeled points are dimmed to 0.15 even when selected.
     /// Returns the indices of selected points.
     pub fn apply_polygon_selection(&mut self, poly: &[[f32; 2]]) -> Vec<usize> {
         let mut indices = Vec::new();
@@ -154,6 +155,7 @@ impl PointCloud {
             p.size = 1.0;
             if sel { indices.push(i); }
         }
+        self.dim_unlabeled();
         indices
     }
 
@@ -257,7 +259,9 @@ impl PointCloud {
         let ymax = points.iter().map(|p| p.y).fold(f32::NEG_INFINITY, f32::max);
         let bounds = [xmin, xmax, ymin, ymax];
         let grid   = SpatialGrid::build(&points, bounds);
-        Ok(Self { points, bounds, grid, labels, categories, label_set_names, all_categories, category_color_maps })
+        let mut cloud = Self { points, bounds, grid, labels, categories, label_set_names, all_categories, category_color_maps };
+        cloud.dim_unlabeled();
+        Ok(cloud)
     }
 
     /// Export to the UMAP binary format consumed by `from_bin`.
@@ -365,12 +369,23 @@ impl PointCloud {
         Ok(())
     }
 
-    /// Reset all highlights to 1.0 (clears any selection).
+    /// Dim points with an empty category to 75 % of their current highlight.
+    /// Must be called once after highlights have been freshly set (not repeatedly).
+    pub fn dim_unlabeled(&mut self) {
+        for (p, cat) in self.points.iter_mut().zip(self.categories.iter()) {
+            if cat.is_empty() {
+                p.highlight *= 0.5;
+            }
+        }
+    }
+
+    /// Reset all highlights to 1.0 (clears any selection), then dim unlabeled points.
     pub fn clear_selection(&mut self) {
         for p in &mut self.points {
             p.highlight = 1.0;
             p.size = 1.0;
         }
+        self.dim_unlabeled();
     }
 
     /// Load categories from a labels parquet file (joined by id) and return
@@ -424,6 +439,8 @@ impl PointCloud {
             p.b = b;
         }
         self.categories = new_categories;
+        // Note: highlights are not reset here; the caller is responsible for
+        // re-applying highlight state (e.g. via apply_category_focus or clear_selection).
     }
 
     /// Load a colour CSV file: two columns `label,color` where color is `#RRGGBB`.
@@ -518,7 +535,9 @@ impl PointCloud {
             .map(|(name, &idx)| (name.clone(), hue_to_rgb(idx as f32 / n_categories as f32)))
             .collect();
         let category_color_maps = vec![default_color_map];
-        Ok(Self { points, bounds, grid, labels, categories, label_set_names, all_categories, category_color_maps })
+        let mut cloud = Self { points, bounds, grid, labels, categories, label_set_names, all_categories, category_color_maps };
+        cloud.dim_unlabeled();
+        Ok(cloud)
     }
 }
 
