@@ -122,34 +122,172 @@ pub struct UmapApp {
     selected_label_idx: usize,
 }
 
+// ---------------------------------------------------------------------------
+// Initialisation helpers (free functions used only by the constructors)
+// ---------------------------------------------------------------------------
+
+/// Register SFNSMono as a fallback font for Unicode symbols (▲▼→ etc.).
+fn register_fonts(ctx: &egui::Context) {
+    let mut fonts = egui::FontDefinitions::default();
+    fonts.font_data.insert(
+        "SFNSMono".to_owned(),
+        egui::FontData::from_static(include_bytes!("../fonts/SFNSMono.ttf")),
+    );
+    fonts.families
+        .entry(egui::FontFamily::Proportional)
+        .or_default()
+        .push("SFNSMono".to_owned());
+    fonts.families
+        .entry(egui::FontFamily::Monospace)
+        .or_default()
+        .push("SFNSMono".to_owned());
+    ctx.set_fonts(fonts);
+}
+
+/// Create the wgpu point renderer and register it in the egui-wgpu callback
+/// resources. Returns the queue handle needed for later buffer uploads.
+fn init_wgpu_renderer(
+    cc: &eframe::CreationContext<'_>,
+    points: &[crate::data::Point],
+) -> Arc<wgpu::Queue> {
+    let wgpu_rs = cc.wgpu_render_state.as_ref().expect("wgpu render state");
+    let renderer = PointRenderer::new(&wgpu_rs.device, wgpu_rs.target_format, points);
+    wgpu_rs
+        .renderer
+        .write()
+        .callback_resources
+        .insert(PointsCallbackResources { renderer });
+    wgpu_rs.queue.clone()
+}
+
+/// Load the primary PointCloud from parquet files described by `config`.
+#[cfg(not(target_arch = "wasm32"))]
+fn load_point_cloud_native(
+    config: &crate::config::Config,
+    label_pairs: &[(String, String)],
+) -> PointCloud {
+    let primary_path = label_pairs.first().map(|(_, p)| p.as_str()).unwrap_or("");
+    PointCloud::load_from_parquet(&config.coords_parquet, primary_path)
+        .expect("failed to load parquet data")
+}
+
+/// Pre-load every label file into `Vec<String>` category vectors so that
+/// switching label sets in the UI is instant.
+#[cfg(not(target_arch = "wasm32"))]
+fn load_all_label_categories(
+    cloud: &mut PointCloud,
+    label_pairs: &[(String, String)],
+) -> Vec<Vec<String>> {
+    label_pairs.iter()
+        .map(|(_, path)| {
+            cloud.load_categories_from_parquet(path)
+                .unwrap_or_else(|e| {
+                    eprintln!("Warning: could not load {path}: {e}");
+                    vec![String::new(); cloud.points.len()]
+                })
+        })
+        .collect()
+}
+
+/// Build one `ColorMap` per label set: load from CSV if configured, otherwise
+/// derive evenly-spaced hues from the unique category names.
+#[cfg(not(target_arch = "wasm32"))]
+fn build_color_maps(
+    label_pairs: &[(String, String)],
+    all_label_categories: &[Vec<String>],
+    config: &crate::config::Config,
+) -> Vec<crate::data::ColorMap> {
+    label_pairs.iter()
+        .zip(all_label_categories.iter())
+        .map(|((name, _), cats)| {
+            if let Some(csv_path) = config.color_file_for(name) {
+                PointCloud::load_color_csv(csv_path).unwrap_or_else(|e| {
+                    eprintln!("Warning: could not load color CSV {csv_path}: {e}");
+                    crate::data::ColorMap::new()
+                })
+            } else {
+                let mut order: std::collections::HashMap<&str, usize> =
+                    std::collections::HashMap::new();
+                for cat in cats {
+                    let n = order.len();
+                    order.entry(cat.as_str()).or_insert(n);
+                }
+                let n_cats = order.len().max(1);
+                order.iter()
+                    .map(|(&name, &idx)| {
+                        (name.to_string(), crate::data::hue_to_rgb(idx as f32 / n_cats as f32))
+                    })
+                    .collect()
+            }
+        })
+        .collect()
+}
+
+/// Store pre-loaded label sets and colour maps on the cloud, then apply the
+/// first label set so point colours are ready for the initial frame.
+#[cfg(not(target_arch = "wasm32"))]
+fn apply_label_sets_to_cloud(
+    cloud: &mut PointCloud,
+    label_pairs: &[(String, String)],
+    all_label_categories: &[Vec<String>],
+    color_maps: &[crate::data::ColorMap],
+) {
+    cloud.label_set_names     = label_pairs.iter().map(|(name, _)| name.clone()).collect();
+    cloud.all_categories      = all_label_categories.to_vec();
+    cloud.category_color_maps = color_maps.to_vec();
+    if let (Some(cats), Some(cmap)) = (all_label_categories.first(), color_maps.first()) {
+        cloud.apply_categories(cats.clone(), cmap);
+    }
+}
+
 impl UmapApp {
+    // -----------------------------------------------------------------------
+    // Constructors
+    // -----------------------------------------------------------------------
+
     /// Shared initialisation once the PointCloud is ready.
     fn build(cc: &eframe::CreationContext<'_>, cloud: PointCloud) -> Self {
-        // Register NotoSans as a fallback font for glyphs missing from the
-        // default Inter/Hack fonts (e.g. ▲▼ in the Geometric Shapes block).
-        let mut fonts = egui::FontDefinitions::default();
-        fonts.font_data.insert(
-            "SFNSMono".to_owned(),
-            egui::FontData::from_static(include_bytes!("../fonts/SFNSMono.ttf")),
-        );
-        fonts.families
-            .entry(egui::FontFamily::Proportional)
-            .or_default()
-            .push("SFNSMono".to_owned());
-        fonts.families
-            .entry(egui::FontFamily::Monospace)
-            .or_default()
-            .push("SFNSMono".to_owned());
-        cc.egui_ctx.set_fonts(fonts);
+        register_fonts(&cc.egui_ctx);
+        let wgpu_queue = init_wgpu_renderer(cc, &cloud.points);
+        Self::default_state(wgpu_queue, cloud)
+    }
 
-        let wgpu_rs = cc.wgpu_render_state.as_ref().expect("wgpu render state");
-        let renderer = PointRenderer::new(&wgpu_rs.device, wgpu_rs.target_format, &cloud.points);
-        wgpu_rs
-            .renderer
-            .write()
-            .callback_resources
-            .insert(PointsCallbackResources { renderer });
+    /// Native constructor: load data from the paths in `config`.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn with_config(cc: &eframe::CreationContext<'_>, config: &crate::config::Config) -> Self {
+        let label_pairs = config.label_pairs();
+        let mut cloud = load_point_cloud_native(config, &label_pairs);
+        let all_label_categories = load_all_label_categories(&mut cloud, &label_pairs);
+        let color_maps = build_color_maps(&label_pairs, &all_label_categories, config);
+        apply_label_sets_to_cloud(&mut cloud, &label_pairs, &all_label_categories, &color_maps);
 
+        let mut app = Self::build(cc, cloud);
+        app.label_files          = label_pairs;
+        app.all_label_categories = all_label_categories;
+        app.color_maps           = color_maps;
+        app
+    }
+
+    /// WASM constructor: load data from the embedded binary blob.
+    #[cfg(target_arch = "wasm32")]
+    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        let cloud = PointCloud::from_bin(
+            include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/data/points.bin"))
+        ).expect("failed to parse embedded points.bin");
+
+        let label_files          = cloud.label_set_names.iter().map(|n| (n.clone(), String::new())).collect();
+        let all_label_categories = cloud.all_categories.clone();
+        let color_maps           = cloud.category_color_maps.clone();
+
+        let mut app = Self::build(cc, cloud);
+        app.label_files          = label_files;
+        app.all_label_categories = all_label_categories;
+        app.color_maps           = color_maps;
+        app
+    }
+
+    /// Build a fresh `UmapApp` with all fields at their default/initial values.
+    fn default_state(wgpu_queue: Arc<wgpu::Queue>, cloud: PointCloud) -> Self {
         Self {
             cloud,
             pan: Vec2::ZERO,
@@ -172,90 +310,12 @@ impl UmapApp {
             table_sort_col: SortCol::Row,
             table_sort_asc: true,
             sorted_rows: Vec::new(),
-            wgpu_queue: wgpu_rs.queue.clone(),
+            wgpu_queue,
             label_files: Vec::new(),
             all_label_categories: Vec::new(),
             color_maps: Vec::new(),
             selected_label_idx: 0,
         }
-    }
-
-    /// Native constructor: load data from the paths in `config`.
-    #[cfg(not(target_arch = "wasm32"))]
-    pub fn with_config(cc: &eframe::CreationContext<'_>, config: &crate::config::Config) -> Self {
-        let coords_path = config.coords_parquet.clone();
-        let label_pairs = config.label_pairs();
-
-        let primary_path = label_pairs.first().map(|(_, p)| p.as_str()).unwrap_or("");
-        let mut cloud = PointCloud::load_from_parquet(&coords_path, primary_path)
-            .expect("failed to load parquet data");
-
-        // Pre-load categories for every label file so switching is instant.
-        let all_label_categories: Vec<Vec<String>> = label_pairs.iter()
-            .map(|(_, path)| {
-                cloud.load_categories_from_parquet(path)
-                    .unwrap_or_else(|e| {
-                        eprintln!("Warning: could not load {path}: {e}");
-                        vec![String::new(); cloud.points.len()]
-                    })
-            })
-            .collect();
-
-        // Build colour maps: load CSV if configured, otherwise build hue defaults.
-        let color_maps: Vec<crate::data::ColorMap> = label_pairs.iter()
-            .zip(all_label_categories.iter())
-            .map(|((name, _), cats)| {
-                if let Some(csv_path) = config.color_file_for(name) {
-                    PointCloud::load_color_csv(csv_path).unwrap_or_else(|e| {
-                        eprintln!("Warning: could not load color CSV {csv_path}: {e}");
-                        crate::data::ColorMap::new()
-                    })
-                } else {
-                    // Default: build hue colour map from the unique categories.
-                    let mut order: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
-                    for cat in cats { let n = order.len(); order.entry(cat.as_str()).or_insert(n); }
-                    let n_cats = order.len().max(1);
-                    order.iter().map(|(&name, &idx)| {
-                        (name.to_string(), crate::data::hue_to_rgb(idx as f32 / n_cats as f32))
-                    }).collect()
-                }
-            })
-            .collect();
-
-        cloud.label_set_names    = label_pairs.iter().map(|(name, _)| name.clone()).collect();
-        cloud.all_categories     = all_label_categories.clone();
-        cloud.category_color_maps = color_maps.clone();
-
-        // Apply the first label set's colours to the points.
-        if let (Some(cats), Some(cmap)) = (all_label_categories.first(), color_maps.first()) {
-            cloud.apply_categories(cats.clone(), cmap);
-        }
-
-        let mut app = Self::build(cc, cloud);
-        app.label_files          = label_pairs;
-        app.all_label_categories = all_label_categories;
-        app.color_maps           = color_maps;
-        app.selected_label_idx   = 0;
-        app
-    }
-
-    /// WASM constructor: load data from the embedded binary blob.
-    #[cfg(target_arch = "wasm32")]
-    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        let cloud = PointCloud::from_bin(
-            include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/data/points.bin"))
-        ).expect("failed to parse embedded points.bin");
-
-        let label_files          = cloud.label_set_names.iter().map(|n| (n.clone(), String::new())).collect();
-        let all_label_categories = cloud.all_categories.clone();
-        let color_maps           = cloud.category_color_maps.clone();
-
-        let mut app = Self::build(cc, cloud);
-        app.label_files          = label_files;
-        app.all_label_categories = all_label_categories;
-        app.color_maps           = color_maps;
-        app.selected_label_idx   = 0;
-        app
     }
 
     fn screen_to_data(&self, screen: Pos2, rect: egui::Rect) -> (f32, f32) {
@@ -382,10 +442,15 @@ impl UmapApp {
     }
 }
 
-impl eframe::App for UmapApp {
-    fn update(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
-        // ---- left panel: collapsed tab ----
+// ---------------------------------------------------------------------------
+// Per-panel UI methods
+// ---------------------------------------------------------------------------
+
+impl UmapApp {
+    fn show_left_panel(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
+        // Collapsed tab
         if !self.left_panel_visible {
+
             egui::SidePanel::left("controls_tab")
                 .resizable(false)
                 .min_width(28.0)
@@ -397,29 +462,7 @@ impl eframe::App for UmapApp {
                     if resp.on_hover_text("Show controls").clicked() {
                         self.left_panel_visible = true;
                     }
-                    // "▶  Controls" rotated 90° clockwise (reads top → bottom).
-                    let text = "▲  Controls";
-                    let font_id = egui::FontId::proportional(12.0);
-                    let color = ui.visuals().text_color();
-                    let galley = ui.fonts(|f| f.layout_no_wrap(
-                        text.to_string(), font_id, color,
-                    ));
-                    let w = galley.size().x;
-                    let h = galley.size().y;
-                    // After π/2 CW rotation around `pos`, the visual bounding box
-                    // is (h wide, w tall) and its center is at pos + (-h/2, w/2).
-                    // Solve for pos so the center lands on rect.center().
-                    let c = rect.center();
-                    let pos = egui::pos2(c.x + h * 0.5, c.y - w * 0.5);
-                    ui.painter().add(egui::epaint::TextShape {
-                        pos,
-                        galley,
-                        underline: egui::Stroke::NONE,
-                        fallback_color: color,
-                        override_text_color: None,
-                        opacity_factor: 1.0,
-                        angle: std::f32::consts::FRAC_PI_2,
-                    });
+                    draw_rotated_tab_label(ui, rect, "▲  Controls");
                 });
         }
 
@@ -581,10 +624,11 @@ impl eframe::App for UmapApp {
                 ui.label("  Drag   → pan");
             }
         });
-        } // if show_left
+        } // if left_panel_visible
+    }
 
-        // ---- bottom panel: selected point coordinates (sortable table) ----
-        // Collapsed tab: thin strip with an expand button.
+    fn show_bottom_panel(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
+        // Collapsed tab
         if !self.selected_indices.is_empty() && !self.table_visible {
             egui::TopBottomPanel::bottom("table_tab")
                 .resizable(false)
@@ -692,9 +736,11 @@ impl eframe::App for UmapApp {
                     }
                 });
         }
+    }
 
-        // ---- right panel: category histogram ----
-        // Collapsed tab: show a narrow strip with an expand button.
+    /// Shows the right histogram panel. Returns the category name if one was clicked.
+    fn show_histogram_panel(&mut self, ctx: &Context) -> Option<String> {
+        // Collapsed tab
         if !self.category_histogram.is_empty() && !self.histogram_visible {
             egui::SidePanel::right("histogram_tab")
                 .resizable(false)
@@ -706,27 +752,7 @@ impl eframe::App for UmapApp {
                     if resp.on_hover_text("Show histogram").clicked() {
                         self.histogram_visible = true;
                     }
-                    // "▼  Selected Labels" rotated 90° CW (reads top → bottom).
-                    // ▼ points down; after 90° CW rotation it points left (toward the panel).
-                    let text = "▼  Selected Labels";
-                    let font_id = egui::FontId::proportional(12.0);
-                    let color = ui.visuals().text_color();
-                    let galley = ui.fonts(|f| f.layout_no_wrap(
-                        text.to_string(), font_id, color,
-                    ));
-                    let w = galley.size().x;
-                    let h = galley.size().y;
-                    let c = rect.center();
-                    let pos = egui::pos2(c.x + h * 0.5, c.y - w * 0.5);
-                    ui.painter().add(egui::epaint::TextShape {
-                        pos,
-                        galley,
-                        underline: egui::Stroke::NONE,
-                        fallback_color: color,
-                        override_text_color: None,
-                        opacity_factor: 1.0,
-                        angle: std::f32::consts::FRAC_PI_2,
-                    });
+                    draw_rotated_tab_label(ui, rect, "▼  Selected Labels");
                 });
         }
 
@@ -869,17 +895,10 @@ impl eframe::App for UmapApp {
                 });
         }
 
-        // Toggle category focus based on histogram label click.
-        if let Some(cat) = histogram_click {
-            if self.focused_category.as_deref() == Some(cat.as_str()) {
-                self.focused_category = None;
-            } else {
-                self.focused_category = Some(cat);
-            }
-            self.apply_category_focus(frame);
-        }
+        histogram_click
+    }
 
-        // ---- canvas ----
+    fn show_canvas(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
         egui::CentralPanel::default()
             .frame(egui::Frame::canvas(&ctx.style()))
             .show(ctx, |ui| {
@@ -1147,6 +1166,53 @@ impl eframe::App for UmapApp {
                 }
             });
     }
+}
+
+// ---------------------------------------------------------------------------
+// eframe::App — thin orchestrator calling the per-panel methods above
+// ---------------------------------------------------------------------------
+
+impl eframe::App for UmapApp {
+    fn update(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
+        self.show_left_panel(ctx, frame);
+        self.show_bottom_panel(ctx, frame);
+        if let Some(cat) = self.show_histogram_panel(ctx) {
+            if self.focused_category.as_deref() == Some(cat.as_str()) {
+                self.focused_category = None;
+            } else {
+                self.focused_category = Some(cat);
+            }
+            self.apply_category_focus(frame);
+        }
+        self.show_canvas(ctx, frame);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/// Paint `text` rotated 90° clockwise and centered within `rect`.
+/// Used for collapsed side-panel tabs.
+fn draw_rotated_tab_label(ui: &mut egui::Ui, rect: egui::Rect, text: &str) {
+    let font_id = egui::FontId::proportional(12.0);
+    let color = ui.visuals().text_color();
+    let galley = ui.fonts(|f| f.layout_no_wrap(text.to_string(), font_id, color));
+    let w = galley.size().x;
+    let h = galley.size().y;
+    // After π/2 CW rotation around `pos`, the visual center is at pos + (-h/2, w/2).
+    // Solve for pos so that center == rect.center().
+    let c = rect.center();
+    let pos = egui::pos2(c.x + h * 0.5, c.y - w * 0.5);
+    ui.painter().add(egui::epaint::TextShape {
+        pos,
+        galley,
+        underline: egui::Stroke::NONE,
+        fallback_color: color,
+        override_text_color: None,
+        opacity_factor: 1.0,
+        angle: std::f32::consts::FRAC_PI_2,
+    });
 }
 
 // ---------------------------------------------------------------------------
