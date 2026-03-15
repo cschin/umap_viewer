@@ -108,6 +108,7 @@ pub struct UmapApp {
     category_histogram: Vec<(String, usize)>, // (category, count) sorted descending
     histogram_visible: bool,
     table_visible: bool,
+    left_panel_visible: bool,
     // table sort state
     table_sort_col: SortCol,
     table_sort_asc: bool,
@@ -167,6 +168,7 @@ impl UmapApp {
             category_histogram: Vec::new(),
             histogram_visible: true,
             table_visible: true,
+            left_panel_visible: true,
             table_sort_col: SortCol::Row,
             table_sort_asc: true,
             sorted_rows: Vec::new(),
@@ -382,9 +384,40 @@ impl UmapApp {
 
 impl eframe::App for UmapApp {
     fn update(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
-        // ---- side panel ----
+        // ---- left panel: collapsed tab (WASM / mobile only) ----
+        #[cfg(target_arch = "wasm32")]
+        if !self.left_panel_visible {
+            egui::SidePanel::left("controls_tab")
+                .resizable(false)
+                .min_width(24.0)
+                .max_width(24.0)
+                .show(ctx, |ui| {
+                    ui.centered_and_justified(|ui| {
+                        if ui.button("▶").on_hover_text("Show controls").clicked() {
+                            self.left_panel_visible = true;
+                        }
+                    });
+                });
+        }
+
+        // ---- left panel: full controls ----
+        let show_left = {
+            #[cfg(target_arch = "wasm32")]
+            { self.left_panel_visible }
+            #[cfg(not(target_arch = "wasm32"))]
+            { true }
+        };
+        if show_left {
         egui::SidePanel::left("controls").min_width(200.0).show(ctx, |ui| {
-            ui.heading("UMAP Viewer");
+            ui.horizontal(|ui| {
+                ui.heading("UMAP Viewer");
+                #[cfg(target_arch = "wasm32")]
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.small_button("◀").on_hover_text("Hide controls").clicked() {
+                        self.left_panel_visible = false;
+                    }
+                });
+            });
             ui.separator();
             ui.label(format!("Points: {}", self.cloud.points.len()));
 
@@ -532,6 +565,7 @@ impl eframe::App for UmapApp {
                 ui.label("  Drag   → pan");
             }
         });
+        } // if show_left
 
         // ---- bottom panel: selected point coordinates (sortable table) ----
         // Collapsed tab: thin strip with an expand button.
@@ -846,14 +880,60 @@ impl eframe::App for UmapApp {
                     self.zoom = new_zoom;
                 }
 
+                // ---- pinch-to-zoom + two-finger pan (WASM / touch devices) ----
+                #[cfg(target_arch = "wasm32")]
+                let multitouch_active = {
+                    let mut active = false;
+                    if let Some(touch) = ui.input(|i| i.multi_touch()) {
+                        active = true;
+                        let [xmin, xmax, ymin, ymax] = self.cloud.bounds;
+                        let aspect = rect.width() / rect.height();
+
+                        // --- pinch zoom toward the gesture centroid ---
+                        if touch.zoom_delta != 1.0 {
+                            let old_zoom = self.zoom;
+                            let new_zoom = (self.zoom * touch.zoom_delta).clamp(0.05, 500.0);
+                            let actual_f = new_zoom / old_zoom;
+                            // Use the current pointer position as the pinch centroid.
+                            let centroid = ui.input(|i| i.pointer.hover_pos())
+                                .unwrap_or(rect.center())
+                                .clamp(rect.min, rect.max);
+                            let span_x = (xmax - xmin) * 0.5 / old_zoom;
+                            let span_y = (ymax - ymin) * 0.5 / old_zoom;
+                            let (half_x, half_y) = if aspect >= 1.0 {
+                                (span_x * aspect, span_y)
+                            } else {
+                                (span_x, span_y / aspect)
+                            };
+                            let nx = (centroid.x - rect.left()) / rect.width() * 2.0 - 1.0;
+                            let ny = -((centroid.y - rect.top()) / rect.height() * 2.0 - 1.0);
+                            self.pan.x += nx * half_x * (1.0 - 1.0 / actual_f);
+                            self.pan.y += ny * half_y * (1.0 - 1.0 / actual_f);
+                            self.zoom = new_zoom;
+                        }
+
+                        // --- two-finger pan (centroid translation) ---
+                        let td = touch.translation_delta;
+                        if td.x != 0.0 || td.y != 0.0 {
+                            let span_x = (xmax - xmin) / self.zoom;
+                            let span_y = (ymax - ymin) / self.zoom;
+                            self.pan.x -= td.x / rect.width()  * span_x;
+                            self.pan.y += td.y / rect.height() * span_y;
+                        }
+                    }
+                    active
+                };
+                #[cfg(not(target_arch = "wasm32"))]
+                let multitouch_active = false;
+
                 match self.mode {
                     Mode::Navigate => {
-                        // pan via drag
-                        if response.drag_started() {
+                        // pan via drag (single finger / mouse); suppressed during multi-touch
+                        if response.drag_started() && !multitouch_active {
                             self.drag_start =
                                 response.interact_pointer_pos().map(|p| (p, self.pan));
                         }
-                        if response.dragged() {
+                        if response.dragged() && !multitouch_active {
                             if let (Some((start_pos, start_pan)), Some(cur)) =
                                 (self.drag_start, response.interact_pointer_pos())
                             {
