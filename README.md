@@ -236,16 +236,18 @@ This reads all label sets and colour CSVs from `config.yaml`, bakes the colours 
 # Development: hot-reload on asset changes
 trunk serve
 
-# Production: optimised WASM in dist/
-trunk build --release
+# Production: optimised WASM in dist/ with relative asset paths
+trunk build --release --public-url ./
 ```
+
+`--public-url ./` emits relative paths (`./app.wasm`, `./app.js`) in the generated HTML so the app works when served from a subdirectory (e.g. GitHub Pages). Omit it only if deploying to the root of a domain. Do **not** put `public_url` in `Trunk.toml` — `trunk serve` requires an absolute path and will panic otherwise.
 
 The dev server binds to `0.0.0.0:8080` by default (see `Trunk.toml`). Open `http://localhost:8080` in the browser.
 
 To serve the `dist/` folder with any static file server (nginx, Python, etc.):
 
 ```bash
-trunk build --release
+trunk build --release --public-url ./
 python3 -m http.server 8080 --directory dist
 ```
 
