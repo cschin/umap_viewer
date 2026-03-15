@@ -2,6 +2,9 @@
 use std::collections::HashMap;
 use rand::prelude::*;
 
+/// Default colour for points with no category label (mid-gray).
+pub const UNLABELED_COLOR: (f32, f32, f32) = (0.5, 0.5, 0.5);
+
 // ---------------------------------------------------------------------------
 // Spatial grid for O(1) hover hit-testing
 // ---------------------------------------------------------------------------
@@ -242,9 +245,13 @@ impl PointCloud {
         let mut categories = Vec::with_capacity(n_points);
         for i in 0..n_points {
             let name = &first_names[first_idx[i]];
-            let (r, g, b) = first_colors.get(name)
-                .copied()
-                .unwrap_or_else(|| hue_to_rgb(first_idx[i] as f32 / n_cats_f));
+            let (r, g, b) = if name.is_empty() {
+                UNLABELED_COLOR
+            } else {
+                first_colors.get(name)
+                    .copied()
+                    .unwrap_or_else(|| hue_to_rgb(first_idx[i] as f32 / n_cats_f))
+            };
             points.push(Point { x: xs[i], y: ys[i], r, g, b, highlight: 1.0, size: 1.0 });
             categories.push(name.clone());
         }
@@ -344,7 +351,7 @@ impl PointCloud {
             buf.extend_from_slice(&(n_cats as u32).to_le_bytes());
             for (ci, name) in cat_names.iter().enumerate() {
                 write_str(&mut buf, name);
-                let (r, g, b) = color_map.get(name).copied().unwrap_or(hue_colors[ci]);
+                let (r, g, b) = if name.is_empty() { UNLABELED_COLOR } else { color_map.get(name).copied().unwrap_or(hue_colors[ci]) };
                 buf.push((r * 255.0).round() as u8);
                 buf.push((g * 255.0).round() as u8);
                 buf.push((b * 255.0).round() as u8);
@@ -431,9 +438,13 @@ impl PointCloud {
         let n_categories = category_order.len().max(1);
         for (i, p) in self.points.iter_mut().enumerate() {
             let cat = &new_categories[i];
-            let (r, g, b) = color_map.get(cat)
-                .copied()
-                .unwrap_or_else(|| hue_to_rgb(category_idx[i] as f32 / n_categories as f32));
+            let (r, g, b) = if cat.is_empty() {
+                UNLABELED_COLOR
+            } else {
+                color_map.get(cat)
+                    .copied()
+                    .unwrap_or_else(|| hue_to_rgb(category_idx[i] as f32 / n_categories as f32))
+            };
             p.r = r;
             p.g = g;
             p.b = b;
@@ -515,9 +526,14 @@ impl PointCloud {
         for i in 0..n {
             let x = xs.get(i).unwrap_or(0.0);
             let y = ys.get(i).unwrap_or(0.0);
-            let (r, g, b) = hue_to_rgb(category_idx[i] as f32 / n_categories as f32);
+            let cat = cats_col.get(i).unwrap_or("").to_string();
+            let (r, g, b) = if cat.is_empty() {
+                UNLABELED_COLOR
+            } else {
+                hue_to_rgb(category_idx[i] as f32 / n_categories as f32)
+            };
             labels.push(ids.get(i).unwrap_or("").to_string());
-            categories.push(cats_col.get(i).unwrap_or("").to_string());
+            categories.push(cat);
             points.push(Point { x, y, r, g, b, highlight: 1.0, size: 1.0 });
         }
 

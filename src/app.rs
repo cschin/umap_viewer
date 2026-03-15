@@ -650,8 +650,9 @@ impl eframe::App for UmapApp {
                             let fraction = *count as f32 / max_count as f32;
                             let is_focused = focused.as_deref() == Some(cat.as_str());
                             // Look up the scatter plot color for this category from any matching point.
+                            // "(unlabeled)" in the histogram corresponds to empty-string categories.
                             let bar_color = self.cloud.categories.iter().zip(self.cloud.points.iter())
-                                .find(|(c, _)| c.as_str() == cat.as_str())
+                                .find(|(c, _)| if cat == "(unlabeled)" { c.is_empty() } else { c.as_str() == cat.as_str() })
                                 .map(|(_, p)| egui::Color32::from_rgb(
                                     (p.r * 255.0) as u8,
                                     (p.g * 255.0) as u8,

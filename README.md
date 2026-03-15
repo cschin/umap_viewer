@@ -13,7 +13,7 @@ An interactive GPU-accelerated viewer for [UMAP](https://umap-learn.readthedocs.
 - **Polygon selection** — click to place vertices, close near the start to select; right-click to cancel
 - **Multiple label sets** — load several label/category parquet files and switch between them instantly from the left panel; colours update live on both native and WASM builds
 - **Custom colours** — optional per-label-set colour CSV files (`label,#RRGGBB`); unspecified labels fall back to evenly-spaced hues
-- **Unlabeled point dimming** — points with no assigned label are automatically rendered at 50% opacity relative to labelled points, making the labelled structure stand out without hiding the unlabelled data
+- **Unlabeled point styling** — points with no assigned label are rendered in mid-gray and at 50% opacity relative to labelled points, making the labelled structure stand out without hiding the unlabelled data; the histogram bar for `(unlabeled)` uses the same gray
 - **Category histogram** — right panel shows the distribution of selected points across categories, bars coloured to match the scatter plot; click a category label to highlight only that category's points at 2× size (click again to deselect); points with no label appear as `(unlabeled)`
 - **Sortable table** — bottom panel lists selected points with sortable columns: `#`, `Label`, `ID`, `X`, `Y`; points with no label show `(unlabeled)` and points with no ID show `(no id)`
 - **Export selected IDs** — save the IDs of all selected points to a text file (one ID per line); native build opens a save dialog defaulting to `~/Downloads`; WASM build triggers a browser download
@@ -321,7 +321,7 @@ Clicking a category label in the histogram panel isolates that category within t
 
 Points that have no assigned label appear as `(unlabeled)` in both the histogram and the table. Clicking `(unlabeled)` focuses those points just like any named category. Points with no ID string show `(no id)` in the ID column of the table.
 
-Unlabeled points are automatically rendered at 50% of the opacity of labelled points in every view state: at rest (0.5 vs 1.0), when selected (0.5 vs 1.0), and when unselected (0.075 vs 0.15). This dimming updates instantly when switching label sets.
+Unlabeled points are rendered in mid-gray (`#808080`) and at 50% of the opacity of labelled points in every view state: at rest (0.5 vs 1.0), when selected (0.5 vs 1.0), and when unselected (0.075 vs 0.15). The histogram bar for `(unlabeled)` uses the same gray so scatter plot and histogram colours always match. Both the color and the dimming update instantly when switching label sets.
 
 Point colours come from the active label set's colour map (custom CSV if provided, otherwise evenly-spaced hues). The histogram bars use the same colours as the scatter plot. Selected points are highlighted; unselected points are dimmed to 15% opacity. The hover tooltip shows `label: <category>`, `id: <point id>`, and data coordinates.
 
