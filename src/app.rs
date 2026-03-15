@@ -627,7 +627,7 @@ impl UmapApp {
         } // if left_panel_visible
     }
 
-    fn show_bottom_panel(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
+    fn show_bottom_panel(&mut self, ctx: &Context) {
         // Collapsed tab
         if !self.selected_indices.is_empty() && !self.table_visible {
             egui::TopBottomPanel::bottom("table_tab")
@@ -1175,7 +1175,7 @@ impl UmapApp {
 impl eframe::App for UmapApp {
     fn update(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
         self.show_left_panel(ctx, frame);
-        self.show_bottom_panel(ctx, frame);
+        self.show_bottom_panel(ctx);
         if let Some(cat) = self.show_histogram_panel(ctx) {
             if self.focused_category.as_deref() == Some(cat.as_str()) {
                 self.focused_category = None;

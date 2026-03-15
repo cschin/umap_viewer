@@ -2,6 +2,12 @@
 
 An interactive GPU-accelerated viewer for [UMAP](https://umap-learn.readthedocs.io/) 2D embeddings. Supports hundreds of thousands of points with smooth pan/zoom, polygon selection, category filtering, and a sortable data table. Runs as a native desktop app or in the browser via WebAssembly.
 
+## 🚀 [Try the live demo](https://cschin.github.io/umap_viewer/)
+
+No install required — runs entirely in your browser via WebAssembly. The demo loads a pre-built dataset of arXiv ML paper embeddings with multiple label sets. Works on desktop and mobile (pinch to zoom, two-finger pan).
+
+---
+
 ![Controls: pan, zoom, polygon select, category histogram, sortable table](misc/umap_viewer_screenshot.gif)
 
 ---
@@ -14,10 +20,12 @@ An interactive GPU-accelerated viewer for [UMAP](https://umap-learn.readthedocs.
 - **Multiple label sets** — load several label/category parquet files and switch between them instantly from the left panel; colours update live on both native and WASM builds
 - **Custom colours** — optional per-label-set colour CSV files (`label,#RRGGBB`); unspecified labels fall back to evenly-spaced hues
 - **Unlabeled point styling** — points with no assigned label are rendered in mid-gray and at 50% opacity relative to labelled points, making the labelled structure stand out without hiding the unlabelled data; the histogram bar for `(unlabeled)` uses the same gray
-- **Category histogram** — right panel shows the distribution of selected points across categories, bars coloured to match the scatter plot; click a category label to highlight only that category's points at 2× size (click again to deselect); points with no label appear as `(unlabeled)`
-- **Sortable table** — bottom panel lists selected points with sortable columns: `#`, `Label`, `ID`, `X`, `Y`; points with no label show `(unlabeled)` and points with no ID show `(no id)`
+- **Category histogram** — right panel shows the distribution of selected points across categories, bars coloured to match the scatter plot; click a category label to highlight only that category's points at 2× size (click again to deselect); points with no label appear as `(unlabeled)`; panel is collapsible via the **▶** button and re-opens from a labeled tab on the right edge
+- **Sortable table** — bottom panel lists selected points with sortable columns: `#`, `Label`, `ID`, `X`, `Y`; points with no label show `(unlabeled)` and points with no ID show `(no id)`; panel is collapsible via the **▼** button and re-opens from a tab at the bottom edge
+- **Collapsible control panel** — the left controls panel collapses to a narrow **▲ Controls** tab to maximise canvas space; click the tab or the **◀** button to toggle
 - **Export selected IDs** — save the IDs of all selected points to a text file (one ID per line); native build opens a save dialog defaulting to `~/Downloads`; WASM build triggers a browser download
 - **Hover tooltip** — shows `label: <category>`, `id: <point id>`, and cursor data coordinates for the nearest point
+- **Touch / mobile support** *(WASM build)* — pinch to zoom toward the pinch centroid; two-finger drag to pan; single-finger drag to pan in navigate mode
 - **Dual target** — identical code base builds for macOS / Linux / Windows (native) and the browser (WASM / WebGL2)
 
 ---
@@ -290,8 +298,9 @@ port = 8080
 
 | Action | How |
 |---|---|
-| Pan | Navigate mode → drag |
-| Zoom | Scroll wheel |
+| Pan | Navigate mode → drag (mouse or single finger on touch) |
+| Zoom | Scroll wheel; pinch gesture on touch devices |
+| Two-finger pan | Pinch gesture centroid translation (touch devices) |
 | Reset view | "Reset view" button — clears selection, resets pan and zoom to default |
 | Switch label set | Click a label name in the **Label set** selector (left panel) |
 | Enter selection mode | Click **Select** in the mode toggle |
@@ -303,6 +312,9 @@ port = 8080
 | Export selected IDs | "Export IDs" button — saves selected point IDs to a text file (one per line) |
 | Focus a category | Click a category label in the histogram — dims all other points; click again to clear |
 | Sort table | Click any column header in the bottom panel; click again to reverse |
+| Collapse left panel | Click **◀** in the panel heading; click the **▲ Controls** tab to expand |
+| Collapse histogram | Click **▶** in the panel heading; click the **▼ Selected Labels** tab to expand |
+| Collapse table | Click **▼** in the panel heading; click the **▲ Show table** tab to expand |
 
 ### Reset view vs Clear selection
 
