@@ -106,6 +106,8 @@ pub struct UmapApp {
     focused_category: Option<String>, // category highlighted via histogram click
     focus_size_scale: f32,            // size multiplier for focused points
     category_histogram: Vec<(String, usize)>, // (category, count) sorted descending
+    histogram_visible: bool,
+    table_visible: bool,
     // table sort state
     table_sort_col: SortCol,
     table_sort_asc: bool,
@@ -163,6 +165,8 @@ impl UmapApp {
             focused_category: None,
             focus_size_scale: 2.0,
             category_histogram: Vec::new(),
+            histogram_visible: true,
+            table_visible: true,
             table_sort_col: SortCol::Row,
             table_sort_asc: true,
             sorted_rows: Vec::new(),
@@ -530,14 +534,36 @@ impl eframe::App for UmapApp {
         });
 
         // ---- bottom panel: selected point coordinates (sortable table) ----
-        if !self.selected_indices.is_empty() {
+        // Collapsed tab: thin strip with an expand button.
+        if !self.selected_indices.is_empty() && !self.table_visible {
+            egui::TopBottomPanel::bottom("table_tab")
+                .resizable(false)
+                .min_height(24.0)
+                .max_height(24.0)
+                .show(ctx, |ui| {
+                    ui.centered_and_justified(|ui| {
+                        if ui.button("▲  Show table").on_hover_text("Show selected points table").clicked() {
+                            self.table_visible = true;
+                        }
+                    });
+                });
+        }
+
+        if !self.selected_indices.is_empty() && self.table_visible {
             egui::TopBottomPanel::bottom("selected_points")
                 .resizable(true)
                 .min_height(10.0)
                 .default_height(120.0)
                 .max_height(300.0)
                 .show(ctx, |ui| {
-                    ui.strong(format!("Selected points ({}):", self.selected_indices.len()));
+                    ui.horizontal(|ui| {
+                        ui.strong(format!("Selected points ({}):", self.selected_indices.len()));
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.small_button("▼").on_hover_text("Hide table").clicked() {
+                                self.table_visible = false;
+                            }
+                        });
+                    });
 
                     let row_height = ui.text_style_height(&egui::TextStyle::Monospace) + 4.0;
                     let total = self.sorted_rows.len();
@@ -618,16 +644,57 @@ impl eframe::App for UmapApp {
         }
 
         // ---- right panel: category histogram ----
-        let histogram_click = if !self.category_histogram.is_empty() {
+        // Collapsed tab: show a narrow strip with an expand button.
+        if !self.category_histogram.is_empty() && !self.histogram_visible {
+            egui::SidePanel::right("histogram_tab")
+                .resizable(false)
+                .min_width(24.0)
+                .max_width(24.0)
+                .show(ctx, |ui| {
+                    ui.centered_and_justified(|ui| {
+                        if ui.button("◀").on_hover_text("Show histogram").clicked() {
+                            self.histogram_visible = true;
+                        }
+                    });
+                });
+        }
+
+        let mut histogram_click: Option<String> = None;
+        if !self.category_histogram.is_empty() && self.histogram_visible {
+            // Compute default width from content so labels are fully visible on first show.
+            const GAP_W_OUTER:   f32 = 6.0;
+            const COUNT_W_OUTER: f32 = 52.0;
+            const LABEL_PAD_OUTER: f32 = 8.0;
+            const BAR_DEFAULT: f32 = 80.0;
+            let font_id_outer = egui::FontId::proportional(11.0);
+            let max_label_w = self.category_histogram.iter()
+                .map(|(cat, _)| ctx.fonts(|f| f.layout_no_wrap(
+                    cat.clone(), font_id_outer.clone(), egui::Color32::WHITE,
+                ).size().x))
+                .fold(0.0_f32, f32::max)
+                + LABEL_PAD_OUTER;
+            let computed_default = max_label_w + GAP_W_OUTER + COUNT_W_OUTER + BAR_DEFAULT;
             egui::SidePanel::right("histogram")
-                .min_width(260.0)
+                .default_width(computed_default)
+                .min_width(60.0)
                 .resizable(true)
                 .show(ctx, |ui| {
-                    ui.heading("Category histogram");
-                    ui.label(egui::RichText::new("Click a label to highlight its points")
-                        .size(10.0)
-                        .italics()
-                        .color(ui.visuals().weak_text_color()));
+                    ui.horizontal(|ui| {
+                        ui.add(egui::Label::new(
+                            egui::RichText::new("Category histogram").heading()
+                        ).truncate());
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.small_button("▶").on_hover_text("Hide histogram").clicked() {
+                                self.histogram_visible = false;
+                            }
+                        });
+                    });
+                    ui.add(egui::Label::new(
+                        egui::RichText::new("Click a label to highlight its points")
+                            .size(10.0)
+                            .italics()
+                            .color(ui.visuals().weak_text_color())
+                    ).truncate());
                     ui.separator();
 
                     let max_count = self.category_histogram.first().map(|(_, c)| *c).unwrap_or(1);
@@ -635,13 +702,16 @@ impl eframe::App for UmapApp {
                     const COUNT_W: f32 = 52.0;
                     const LABEL_PADDING: f32 = 8.0;
                     let font_id = egui::FontId::proportional(11.0);
-                    let label_w = self.category_histogram.iter()
+                    let avail = ui.available_width();
+                    let raw_label_w = self.category_histogram.iter()
                         .map(|(cat, _)| ui.fonts(|f| f.layout_no_wrap(
                             cat.clone(), font_id.clone(), egui::Color32::WHITE,
                         ).size().x))
                         .fold(0.0_f32, f32::max)
                         + LABEL_PADDING;
-                    let bar_max_w = (ui.available_width() - label_w - GAP_W - COUNT_W).max(40.0);
+                    // Cap label_w so that label_w + GAP_W + bar + COUNT_W <= avail for any bar >= 0.
+                    let label_w = raw_label_w.min((avail - GAP_W - COUNT_W - 1.0).max(0.0));
+                    let bar_max_w = (avail - label_w - GAP_W - COUNT_W).max(0.0);
                     let focused = &self.focused_category;
 
                     let mut clicked: Option<String> = None;
@@ -724,12 +794,9 @@ impl eframe::App for UmapApp {
                             });
                         }
                     });
-                    clicked
-                })
-                .inner
-        } else {
-            None
-        };
+                    histogram_click = clicked;
+                });
+        }
 
         // Toggle category focus based on histogram label click.
         if let Some(cat) = histogram_click {
