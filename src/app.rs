@@ -599,10 +599,8 @@ impl UmapApp {
                     let focus_changed = ui
                         .add(egui::Slider::new(&mut self.focus_size_scale, 1.0..=16.0).step_by(1.0))
                         .changed();
-                    if focus_changed {
-                        if self.focused_category.is_some() {
-                            self.apply_category_focus(frame);
-                        }
+                    if focus_changed && self.focused_category.is_some() {
+                        self.apply_category_focus(frame);
                     }
                     ui.add_space(8.0);
 
@@ -1208,11 +1206,11 @@ impl UmapApp {
                                 }
 
                                 // Check if close to first vertex (close the polygon)
-                                let close = self.poly_verts.first().map_or(false, |&v| {
+                                let close = self.poly_verts.first().map(|&v| {
                                     let first_screen = self.data_to_screen(v[0], v[1], rect);
                                     (screen - first_screen).length() < 12.0
                                         && self.poly_verts.len() >= 3
-                                });
+                                }).unwrap_or(false);
 
                                 if close {
                                     let poly = self.poly_verts.clone();

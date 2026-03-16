@@ -62,10 +62,8 @@ impl SpatialGrid {
                 for &pi in &self.cells[row as usize * self.cols + col as usize] {
                     let p = &points[pi as usize];
                     let d2 = (p.x - x).powi(2) + (p.y - y).powi(2);
-                    if d2 <= r2 {
-                        if best.map_or(true, |(_, bd)| d2 < bd) {
-                            best = Some((pi as usize, d2));
-                        }
+                    if d2 <= r2 && best.as_ref().map_or_else(|| true, |&(_, bd)| d2 < bd) {
+                        best = Some((pi as usize, d2));
                     }
                 }
             }
@@ -645,17 +643,19 @@ impl PointCloud {
         let mut labels = Vec::with_capacity(n);
         let mut categories = Vec::with_capacity(n);
         let mut points = Vec::with_capacity(n);
-        for i in 0..n {
-            let x = xs.get(i).unwrap_or(0.0);
-            let y = ys.get(i).unwrap_or(0.0);
-            let cat = cats_col.get(i).unwrap_or("").to_string();
-            let (r, g, b) = if cat.is_empty() {
+        for ((id, x), (y, (cat, idx))) in ids
+            .into_iter()
+            .zip(xs.into_no_null_iter())
+            .zip(ys.into_no_null_iter().zip(cats_col.into_iter().zip(category_idx.into_iter())))
+        {
+            let cat_str = cat.unwrap_or("").to_string();
+            let (r, g, b) = if cat_str.is_empty() {
                 UNLABELED_COLOR
             } else {
-                hue_to_rgb(category_idx[i] as f32 / n_categories as f32)
+                hue_to_rgb(idx as f32 / n_categories as f32)
             };
-            labels.push(ids.get(i).unwrap_or("").to_string());
-            categories.push(cat);
+            labels.push(id.unwrap_or("").to_string());
+            categories.push(cat_str.clone());
             points.push(Point {
                 x,
                 y,
