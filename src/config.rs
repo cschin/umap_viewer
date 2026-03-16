@@ -18,9 +18,7 @@ impl LabelParquetConfig {
     fn primary_path(&self) -> &str {
         match self {
             LabelParquetConfig::Single(p) => p.as_str(),
-            LabelParquetConfig::Map(map) => {
-                map.values().next().map(|s| s.as_str()).unwrap_or("")
-            }
+            LabelParquetConfig::Map(map) => map.values().next().map(|s| s.as_str()).unwrap_or(""),
         }
     }
 }
@@ -84,7 +82,8 @@ impl Config {
     /// and load it.
     pub fn from_args() -> Result<Self, Box<dyn std::error::Error>> {
         let args: Vec<String> = std::env::args().collect();
-        let path = args.windows(2)
+        let path = args
+            .windows(2)
             .find(|w| w[0] == "--config")
             .map(|w| w[1].as_str())
             .unwrap_or("config.yaml");
@@ -104,7 +103,9 @@ impl Config {
                     .to_string();
                 vec![(name, path.clone())]
             }
-            LabelParquetConfig::Map(map) => map.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+            LabelParquetConfig::Map(map) => {
+                map.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+            }
         }
     }
 

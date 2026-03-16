@@ -20,12 +20,20 @@ struct QuadVertex {
 }
 
 const QUAD_VERTICES: &[QuadVertex] = &[
-    QuadVertex { offset: [-0.5, -0.5] },
-    QuadVertex { offset: [ 0.5, -0.5] },
-    QuadVertex { offset: [ 0.5,  0.5] },
-    QuadVertex { offset: [-0.5, -0.5] },
-    QuadVertex { offset: [ 0.5,  0.5] },
-    QuadVertex { offset: [-0.5,  0.5] },
+    QuadVertex {
+        offset: [-0.5, -0.5],
+    },
+    QuadVertex {
+        offset: [0.5, -0.5],
+    },
+    QuadVertex { offset: [0.5, 0.5] },
+    QuadVertex {
+        offset: [-0.5, -0.5],
+    },
+    QuadVertex { offset: [0.5, 0.5] },
+    QuadVertex {
+        offset: [-0.5, 0.5],
+    },
 ];
 
 pub struct PointRenderer {
@@ -123,12 +131,12 @@ impl PointRenderer {
                             wgpu::VertexAttribute {
                                 offset: 20,
                                 shader_location: 2,
-                                format: wgpu::VertexFormat::Float32,   // highlight
+                                format: wgpu::VertexFormat::Float32, // highlight
                             },
                             wgpu::VertexAttribute {
                                 offset: 24,
                                 shader_location: 4,
-                                format: wgpu::VertexFormat::Float32,   // size
+                                format: wgpu::VertexFormat::Float32, // size
                             },
                         ],
                     },
@@ -164,7 +172,14 @@ impl PointRenderer {
             cache: None,
         });
 
-        Self { pipeline, point_buf, quad_buf, uniform_buf, bind_group, n_points: points.len() as u32 }
+        Self {
+            pipeline,
+            point_buf,
+            quad_buf,
+            uniform_buf,
+            bind_group,
+            n_points: points.len() as u32,
+        }
     }
 
     /// Replace GPU point data.
@@ -219,9 +234,9 @@ pub fn build_transform(
     let ty = -(cy + pan[1]) * sy;
 
     [
-        [sx,  0.0, 0.0, 0.0],
-        [0.0, sy,  0.0, 0.0],
+        [sx, 0.0, 0.0, 0.0],
+        [0.0, sy, 0.0, 0.0],
         [0.0, 0.0, 1.0, 0.0],
-        [tx,  ty,  0.0, 1.0],
+        [tx, ty, 0.0, 1.0],
     ]
 }

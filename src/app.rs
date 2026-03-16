@@ -100,11 +100,11 @@ pub struct UmapApp {
     hovered_point: Option<usize>,
     // selection mode
     mode: Mode,
-    poly_verts: Vec<[f32; 2]>,       // data-space polygon vertices
-    poly_closed: bool,               // true after selection is confirmed
-    selected_indices: Vec<usize>,    // indices into cloud.points
-    focused_category: Option<String>, // category highlighted via histogram click
-    focus_size_scale: f32,            // size multiplier for focused points
+    poly_verts: Vec<[f32; 2]>,                // data-space polygon vertices
+    poly_closed: bool,                        // true after selection is confirmed
+    selected_indices: Vec<usize>,             // indices into cloud.points
+    focused_category: Option<String>,         // category highlighted via histogram click
+    focus_size_scale: f32,                    // size multiplier for focused points
     category_histogram: Vec<(String, usize)>, // (category, count) sorted descending
     histogram_visible: bool,
     table_visible: bool,
@@ -112,13 +112,13 @@ pub struct UmapApp {
     // table sort state
     table_sort_col: SortCol,
     table_sort_asc: bool,
-    sorted_rows: Vec<usize>,         // permutation of 0..selected_indices.len()
+    sorted_rows: Vec<usize>, // permutation of 0..selected_indices.len()
     // wgpu queue for point buffer uploads
     wgpu_queue: Arc<wgpu::Queue>,
     // label file selector
-    label_files: Vec<(String, String)>,          // (display name, path)
-    all_label_categories: Vec<Vec<String>>,      // pre-loaded categories per file
-    color_maps: Vec<crate::data::ColorMap>,      // per-file colour maps (empty = hue default)
+    label_files: Vec<(String, String)>,     // (display name, path)
+    all_label_categories: Vec<Vec<String>>, // pre-loaded categories per file
+    color_maps: Vec<crate::data::ColorMap>, // per-file colour maps (empty = hue default)
     selected_label_idx: usize,
 }
 
@@ -133,11 +133,13 @@ fn register_fonts(ctx: &egui::Context) {
         "SFNSMono".to_owned(),
         egui::FontData::from_static(include_bytes!("../fonts/SFNSMono.ttf")),
     );
-    fonts.families
+    fonts
+        .families
         .entry(egui::FontFamily::Proportional)
         .or_default()
         .push("SFNSMono".to_owned());
-    fonts.families
+    fonts
+        .families
         .entry(egui::FontFamily::Monospace)
         .or_default()
         .push("SFNSMono".to_owned());
@@ -178,9 +180,11 @@ fn load_all_label_categories(
     cloud: &mut PointCloud,
     label_pairs: &[(String, String)],
 ) -> Vec<Vec<String>> {
-    label_pairs.iter()
+    label_pairs
+        .iter()
         .map(|(_, path)| {
-            cloud.load_categories_from_parquet(path)
+            cloud
+                .load_categories_from_parquet(path)
                 .unwrap_or_else(|e| {
                     eprintln!("Warning: could not load {path}: {e}");
                     vec![String::new(); cloud.points.len()]
@@ -197,7 +201,8 @@ fn build_color_maps(
     all_label_categories: &[Vec<String>],
     config: &crate::config::Config,
 ) -> Vec<crate::data::ColorMap> {
-    label_pairs.iter()
+    label_pairs
+        .iter()
         .zip(all_label_categories.iter())
         .map(|((name, _), cats)| {
             if let Some(csv_path) = config.color_file_for(name) {
@@ -213,9 +218,13 @@ fn build_color_maps(
                     order.entry(cat.as_str()).or_insert(n);
                 }
                 let n_cats = order.len().max(1);
-                order.iter()
+                order
+                    .iter()
                     .map(|(&name, &idx)| {
-                        (name.to_string(), crate::data::hue_to_rgb(idx as f32 / n_cats as f32))
+                        (
+                            name.to_string(),
+                            crate::data::hue_to_rgb(idx as f32 / n_cats as f32),
+                        )
                     })
                     .collect()
             }
@@ -232,8 +241,8 @@ fn apply_label_sets_to_cloud(
     all_label_categories: &[Vec<String>],
     color_maps: &[crate::data::ColorMap],
 ) {
-    cloud.label_set_names     = label_pairs.iter().map(|(name, _)| name.clone()).collect();
-    cloud.all_categories      = all_label_categories.to_vec();
+    cloud.label_set_names = label_pairs.iter().map(|(name, _)| name.clone()).collect();
+    cloud.all_categories = all_label_categories.to_vec();
     cloud.category_color_maps = color_maps.to_vec();
     if let (Some(cats), Some(cmap)) = (all_label_categories.first(), color_maps.first()) {
         cloud.apply_categories(cats.clone(), cmap);
@@ -262,27 +271,33 @@ impl UmapApp {
         apply_label_sets_to_cloud(&mut cloud, &label_pairs, &all_label_categories, &color_maps);
 
         let mut app = Self::build(cc, cloud);
-        app.label_files          = label_pairs;
+        app.label_files = label_pairs;
         app.all_label_categories = all_label_categories;
-        app.color_maps           = color_maps;
+        app.color_maps = color_maps;
         app
     }
 
     /// WASM constructor: load data from the embedded binary blob.
     #[cfg(target_arch = "wasm32")]
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        let cloud = PointCloud::from_bin(
-            include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/data/points.bin"))
-        ).expect("failed to parse embedded points.bin");
+        let cloud = PointCloud::from_bin(include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/data/points.bin"
+        )))
+        .expect("failed to parse embedded points.bin");
 
-        let label_files          = cloud.label_set_names.iter().map(|n| (n.clone(), String::new())).collect();
+        let label_files = cloud
+            .label_set_names
+            .iter()
+            .map(|n| (n.clone(), String::new()))
+            .collect();
         let all_label_categories = cloud.all_categories.clone();
-        let color_maps           = cloud.category_color_maps.clone();
+        let color_maps = cloud.category_color_maps.clone();
 
         let mut app = Self::build(cc, cloud);
-        app.label_files          = label_files;
+        app.label_files = label_files;
         app.all_label_categories = all_label_categories;
-        app.color_maps           = color_maps;
+        app.color_maps = color_maps;
         app
     }
 
@@ -364,11 +379,26 @@ impl UmapApp {
     fn build_category_histogram(&self) -> Vec<(String, usize)> {
         let mut map: std::collections::HashMap<&str, usize> = Default::default();
         for &i in &self.selected_indices {
-            let cat = self.cloud.categories.get(i).map(|s| s.as_str()).unwrap_or("");
+            let cat = self
+                .cloud
+                .categories
+                .get(i)
+                .map(|s| s.as_str())
+                .unwrap_or("");
             *map.entry(cat).or_insert(0) += 1;
         }
-        let mut counts: Vec<(String, usize)> = map.into_iter()
-            .map(|(k, v)| (if k.is_empty() { "(unlabeled)".to_string() } else { k.to_string() }, v))
+        let mut counts: Vec<(String, usize)> = map
+            .into_iter()
+            .map(|(k, v)| {
+                (
+                    if k.is_empty() {
+                        "(unlabeled)".to_string()
+                    } else {
+                        k.to_string()
+                    },
+                    v,
+                )
+            })
             .collect();
         counts.sort_by(|a, b| b.1.cmp(&a.1));
         counts
@@ -381,20 +411,42 @@ impl UmapApp {
         match self.table_sort_col {
             SortCol::Row => {} // natural order
             SortCol::Category => order.sort_by(|&a, &b| {
-                let ca = cloud.categories.get(selected[a]).map(|s| s.as_str()).unwrap_or("");
-                let cb = cloud.categories.get(selected[b]).map(|s| s.as_str()).unwrap_or("");
+                let ca = cloud
+                    .categories
+                    .get(selected[a])
+                    .map(|s| s.as_str())
+                    .unwrap_or("");
+                let cb = cloud
+                    .categories
+                    .get(selected[b])
+                    .map(|s| s.as_str())
+                    .unwrap_or("");
                 ca.cmp(cb)
             }),
             SortCol::Label => order.sort_by(|&a, &b| {
-                let la = cloud.labels.get(selected[a]).map(|s| s.as_str()).unwrap_or("");
-                let lb = cloud.labels.get(selected[b]).map(|s| s.as_str()).unwrap_or("");
+                let la = cloud
+                    .labels
+                    .get(selected[a])
+                    .map(|s| s.as_str())
+                    .unwrap_or("");
+                let lb = cloud
+                    .labels
+                    .get(selected[b])
+                    .map(|s| s.as_str())
+                    .unwrap_or("");
                 la.cmp(lb)
             }),
             SortCol::X => order.sort_by(|&a, &b| {
-                cloud.points[selected[a]].x.partial_cmp(&cloud.points[selected[b]].x).unwrap_or(std::cmp::Ordering::Equal)
+                cloud.points[selected[a]]
+                    .x
+                    .partial_cmp(&cloud.points[selected[b]].x)
+                    .unwrap_or(std::cmp::Ordering::Equal)
             }),
             SortCol::Y => order.sort_by(|&a, &b| {
-                cloud.points[selected[a]].y.partial_cmp(&cloud.points[selected[b]].y).unwrap_or(std::cmp::Ordering::Equal)
+                cloud.points[selected[a]]
+                    .y
+                    .partial_cmp(&cloud.points[selected[b]].y)
+                    .unwrap_or(std::cmp::Ordering::Equal)
             }),
         }
         if !self.table_sort_asc {
@@ -413,14 +465,32 @@ impl UmapApp {
             let (highlight, size) = match &self.focused_category {
                 Some(cat) => {
                     let in_sel = selected_set.contains(&i);
-                    let in_cat = self.cloud.categories.get(i).map(|c| {
-                        if cat == "(unlabeled)" { c.is_empty() } else { c == cat }
-                    }).unwrap_or(false);
-                    if in_sel && in_cat { (1.0, self.focus_size_scale) } else { (0.15, 1.0) }
+                    let in_cat = self
+                        .cloud
+                        .categories
+                        .get(i)
+                        .map(|c| {
+                            if cat == "(unlabeled)" {
+                                c.is_empty()
+                            } else {
+                                c == cat
+                            }
+                        })
+                        .unwrap_or(false);
+                    if in_sel && in_cat {
+                        (1.0, self.focus_size_scale)
+                    } else {
+                        (0.15, 1.0)
+                    }
                 }
                 None => {
                     let in_sel = selected_set.is_empty() || selected_set.contains(&i);
-                    let unlabeled = self.cloud.categories.get(i).map(|c| c.is_empty()).unwrap_or(false);
+                    let unlabeled = self
+                        .cloud
+                        .categories
+                        .get(i)
+                        .map(|c| c.is_empty())
+                        .unwrap_or(false);
                     let base_h = if in_sel { 1.0 } else { 0.15 };
                     let h = if unlabeled { base_h * 0.5 } else { base_h };
                     (h, 1.0)
@@ -436,7 +506,8 @@ impl UmapApp {
         if let Some(wgpu_rs) = frame.wgpu_render_state() {
             let res_lock = wgpu_rs.renderer.read();
             if let Some(res) = res_lock.callback_resources.get::<PointsCallbackResources>() {
-                res.renderer.update_points(&self.wgpu_queue, &self.cloud.points);
+                res.renderer
+                    .update_points(&self.wgpu_queue, &self.cloud.points);
             }
         }
     }
@@ -450,7 +521,6 @@ impl UmapApp {
     fn show_left_panel(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
         // Collapsed tab
         if !self.left_panel_visible {
-
             egui::SidePanel::left("controls_tab")
                 .resizable(false)
                 .min_width(28.0)
@@ -468,162 +538,182 @@ impl UmapApp {
 
         // ---- left panel: full controls ----
         if self.left_panel_visible {
-        egui::SidePanel::left("controls").min_width(200.0).show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                ui.heading("UMAP Viewer");
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.small_button("◀").on_hover_text("Hide controls").clicked() {
-                        self.left_panel_visible = false;
+            egui::SidePanel::left("controls")
+                .min_width(200.0)
+                .show(ctx, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.heading("UMAP Viewer");
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui
+                                .small_button("◀")
+                                .on_hover_text("Hide controls")
+                                .clicked()
+                            {
+                                self.left_panel_visible = false;
+                            }
+                        });
+                    });
+                    ui.separator();
+                    ui.label(format!("Points: {}", self.cloud.points.len()));
+
+                    // ---- label file selector ----
+                    if self.label_files.len() > 1 {
+                        ui.add_space(6.0);
+                        ui.label("Label set:");
+                        let mut changed = false;
+                        for (i, (name, _path)) in self.label_files.iter().enumerate() {
+                            if ui
+                                .selectable_label(self.selected_label_idx == i, name)
+                                .clicked()
+                                && self.selected_label_idx != i
+                            {
+                                self.selected_label_idx = i;
+                                changed = true;
+                            }
+                        }
+                        if changed {
+                            let new_cats =
+                                self.all_label_categories[self.selected_label_idx].clone();
+                            let empty = crate::data::ColorMap::new();
+                            let cmap = self
+                                .color_maps
+                                .get(self.selected_label_idx)
+                                .unwrap_or(&empty);
+                            self.cloud.apply_categories(new_cats, cmap);
+                            // Re-derive all highlights for the new label set (handles
+                            // selection state, focus, and relative unlabeled dim).
+                            self.apply_category_focus(frame);
+                            if !self.selected_indices.is_empty() {
+                                self.category_histogram = self.build_category_histogram();
+                            }
+                        }
+                        ui.separator();
+                    }
+
+                    ui.add_space(8.0);
+                    ui.label("Point size");
+                    ui.add(egui::Slider::new(&mut self.point_size, 1.0..=20.0));
+                    ui.label("Opacity");
+                    ui.add(egui::Slider::new(&mut self.alpha, 0.01..=1.0));
+                    ui.label("Focus size scale");
+                    let focus_changed = ui
+                        .add(egui::Slider::new(&mut self.focus_size_scale, 1.0..=16.0).step_by(1.0))
+                        .changed();
+                    if focus_changed {
+                        if self.focused_category.is_some() {
+                            self.apply_category_focus(frame);
+                        }
+                    }
+                    ui.add_space(8.0);
+
+                    ui.label(format!("Zoom: {:.2}x", self.zoom));
+                    if ui.button("Reset view").clicked() {
+                        self.cloud.clear_selection();
+                        self.upload_points(frame);
+                        self.selected_indices.clear();
+                        self.focused_category = None;
+                        self.category_histogram.clear();
+                        self.sorted_rows.clear();
+                        self.poly_verts.clear();
+                        self.poly_closed = false;
+                        self.mode = Mode::Navigate;
+                        self.pan = Vec2::ZERO;
+                        self.zoom = 1.0;
+                    }
+                    ui.add_space(8.0);
+                    ui.separator();
+
+                    // ---- mode toggle ----
+                    ui.label("Mode:");
+                    ui.horizontal(|ui| {
+                        if ui
+                            .selectable_label(self.mode == Mode::Navigate, "Navigate")
+                            .clicked()
+                        {
+                            self.mode = Mode::Navigate;
+                            self.poly_verts.clear();
+                            self.poly_closed = false;
+                        }
+                        if ui
+                            .selectable_label(self.mode == Mode::SelectPolygon, "Select")
+                            .clicked()
+                        {
+                            self.mode = Mode::SelectPolygon;
+                        }
+                    });
+                    ui.add_space(4.0);
+
+                    if self.mode == Mode::SelectPolygon {
+                        ui.label(format!("Vertices: {}", self.poly_verts.len()));
+                        ui.label("Left-click  → add vertex");
+                        ui.label("Near start  → close & select");
+                        ui.label("Right-click → cancel");
+                        ui.add_space(4.0);
+                    }
+
+                    if ui.button("Select All").clicked() {
+                        let [xmin, xmax, ymin, ymax] = self.cloud.bounds;
+                        let margin_x = (xmax - xmin) * 0.05;
+                        let margin_y = (ymax - ymin) * 0.05;
+                        let bbox = vec![
+                            [xmin - margin_x, ymin - margin_y],
+                            [xmax + margin_x, ymin - margin_y],
+                            [xmax + margin_x, ymax + margin_y],
+                            [xmin - margin_x, ymax + margin_y],
+                        ];
+                        self.selected_indices = self.cloud.apply_polygon_selection(&bbox);
+                        self.focused_category = None;
+                        self.category_histogram = self.build_category_histogram();
+                        self.rebuild_sorted_rows();
+                        self.upload_points(frame);
+                        self.poly_verts = bbox;
+                        self.poly_closed = true;
+                        self.mode = Mode::Navigate;
+                    }
+                    ui.add_space(4.0);
+
+                    if !self.selected_indices.is_empty() {
+                        ui.separator();
+                        ui.label(format!("Selected: {}", self.selected_indices.len()));
+                        if ui.button("Clear selection").clicked() {
+                            self.cloud.clear_selection();
+                            self.upload_points(frame);
+                            self.selected_indices.clear();
+                            self.focused_category = None;
+                            self.category_histogram.clear();
+                            self.sorted_rows.clear();
+                            self.poly_verts.clear();
+                            self.poly_closed = false;
+                        }
+                        if ui.button("Export IDs").clicked() {
+                            let ids: Vec<String> = self
+                                .selected_indices
+                                .iter()
+                                .filter_map(|&i| self.cloud.labels.get(i).cloned())
+                                .collect();
+                            let content = ids.join("\n");
+                            export_ids(content);
+                        }
+                    }
+
+                    ui.add_space(8.0);
+                    ui.separator();
+                    ui.label("Cursor position:");
+                    if let Some((x, y)) = self.hover_data_pos {
+                        ui.monospace(format!("x = {:.4}", x));
+                        ui.monospace(format!("y = {:.4}", y));
+                    } else {
+                        ui.monospace("x = —");
+                        ui.monospace("y = —");
+                    }
+                    ui.add_space(8.0);
+                    ui.separator();
+                    ui.label("Controls:");
+                    ui.label("  Scroll → zoom");
+                    if self.mode == Mode::Navigate {
+                        ui.label("  Drag   → pan");
                     }
                 });
-            });
-            ui.separator();
-            ui.label(format!("Points: {}", self.cloud.points.len()));
-
-            // ---- label file selector ----
-            if self.label_files.len() > 1 {
-                ui.add_space(6.0);
-                ui.label("Label set:");
-                let mut changed = false;
-                for (i, (name, _path)) in self.label_files.iter().enumerate() {
-                    if ui.selectable_label(self.selected_label_idx == i, name).clicked()
-                        && self.selected_label_idx != i
-                    {
-                        self.selected_label_idx = i;
-                        changed = true;
-                    }
-                }
-                if changed {
-                    let new_cats = self.all_label_categories[self.selected_label_idx].clone();
-                    let empty = crate::data::ColorMap::new();
-                    let cmap  = self.color_maps.get(self.selected_label_idx).unwrap_or(&empty);
-                    self.cloud.apply_categories(new_cats, cmap);
-                    // Re-derive all highlights for the new label set (handles
-                    // selection state, focus, and relative unlabeled dim).
-                    self.apply_category_focus(frame);
-                    if !self.selected_indices.is_empty() {
-                        self.category_histogram = self.build_category_histogram();
-                    }
-                }
-                ui.separator();
-            }
-
-            ui.add_space(8.0);
-            ui.label("Point size");
-            ui.add(egui::Slider::new(&mut self.point_size, 1.0..=20.0));
-            ui.label("Opacity");
-            ui.add(egui::Slider::new(&mut self.alpha, 0.01..=1.0));
-            ui.label("Focus size scale");
-            let focus_changed = ui.add(
-                egui::Slider::new(&mut self.focus_size_scale, 1.0..=16.0).step_by(1.0)
-            ).changed();
-            if focus_changed {
-                if self.focused_category.is_some() {
-                    self.apply_category_focus(frame);
-                }
-            }
-            ui.add_space(8.0);
-
-            ui.label(format!("Zoom: {:.2}x", self.zoom));
-            if ui.button("Reset view").clicked() {
-                self.cloud.clear_selection();
-                self.upload_points(frame);
-                self.selected_indices.clear();
-                self.focused_category = None;
-                self.category_histogram.clear();
-                self.sorted_rows.clear();
-                self.poly_verts.clear();
-                self.poly_closed = false;
-                self.mode = Mode::Navigate;
-                self.pan = Vec2::ZERO;
-                self.zoom = 1.0;
-            }
-            ui.add_space(8.0);
-            ui.separator();
-
-            // ---- mode toggle ----
-            ui.label("Mode:");
-            ui.horizontal(|ui| {
-                if ui.selectable_label(self.mode == Mode::Navigate, "Navigate").clicked() {
-                    self.mode = Mode::Navigate;
-                    self.poly_verts.clear();
-                    self.poly_closed = false;
-                }
-                if ui.selectable_label(self.mode == Mode::SelectPolygon, "Select").clicked() {
-                    self.mode = Mode::SelectPolygon;
-                }
-            });
-            ui.add_space(4.0);
-
-            if self.mode == Mode::SelectPolygon {
-                ui.label(format!("Vertices: {}", self.poly_verts.len()));
-                ui.label("Left-click  → add vertex");
-                ui.label("Near start  → close & select");
-                ui.label("Right-click → cancel");
-                ui.add_space(4.0);
-            }
-
-            if ui.button("Select All").clicked() {
-                let [xmin, xmax, ymin, ymax] = self.cloud.bounds;
-                let margin_x = (xmax - xmin) * 0.05;
-                let margin_y = (ymax - ymin) * 0.05;
-                let bbox = vec![
-                    [xmin - margin_x, ymin - margin_y],
-                    [xmax + margin_x, ymin - margin_y],
-                    [xmax + margin_x, ymax + margin_y],
-                    [xmin - margin_x, ymax + margin_y],
-                ];
-                self.selected_indices = self.cloud.apply_polygon_selection(&bbox);
-                self.focused_category = None;
-                self.category_histogram = self.build_category_histogram();
-                self.rebuild_sorted_rows();
-                self.upload_points(frame);
-                self.poly_verts = bbox;
-                self.poly_closed = true;
-                self.mode = Mode::Navigate;
-            }
-            ui.add_space(4.0);
-
-            if !self.selected_indices.is_empty() {
-                ui.separator();
-                ui.label(format!("Selected: {}", self.selected_indices.len()));
-                if ui.button("Clear selection").clicked() {
-                    self.cloud.clear_selection();
-                    self.upload_points(frame);
-                    self.selected_indices.clear();
-                    self.focused_category = None;
-                    self.category_histogram.clear();
-                    self.sorted_rows.clear();
-                    self.poly_verts.clear();
-                    self.poly_closed = false;
-                }
-                if ui.button("Export IDs").clicked() {
-                    let ids: Vec<String> = self.selected_indices.iter()
-                        .filter_map(|&i| self.cloud.labels.get(i).cloned())
-                        .collect();
-                    let content = ids.join("\n");
-                    export_ids(content);
-                }
-            }
-
-            ui.add_space(8.0);
-            ui.separator();
-            ui.label("Cursor position:");
-            if let Some((x, y)) = self.hover_data_pos {
-                ui.monospace(format!("x = {:.4}", x));
-                ui.monospace(format!("y = {:.4}", y));
-            } else {
-                ui.monospace("x = —");
-                ui.monospace("y = —");
-            }
-            ui.add_space(8.0);
-            ui.separator();
-            ui.label("Controls:");
-            ui.label("  Scroll → zoom");
-            if self.mode == Mode::Navigate {
-                ui.label("  Drag   → pan");
-            }
-        });
         } // if left_panel_visible
     }
 
@@ -636,7 +726,11 @@ impl UmapApp {
                 .max_height(24.0)
                 .show(ctx, |ui| {
                     ui.centered_and_justified(|ui| {
-                        if ui.button("▲  Show table").on_hover_text("Show selected points table").clicked() {
+                        if ui
+                            .button("▲  Show table")
+                            .on_hover_text("Show selected points table")
+                            .clicked()
+                        {
                             self.table_visible = true;
                         }
                     });
@@ -651,7 +745,10 @@ impl UmapApp {
                 .max_height(300.0)
                 .show(ctx, |ui| {
                     ui.horizontal(|ui| {
-                        ui.strong(format!("Selected points ({}):", self.selected_indices.len()));
+                        ui.strong(format!(
+                            "Selected points ({}):",
+                            self.selected_indices.len()
+                        ));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui.small_button("▼").on_hover_text("Hide table").clicked() {
                                 self.table_visible = false;
@@ -671,7 +768,11 @@ impl UmapApp {
 
                     let col_label = |name: &str, col: SortCol| -> String {
                         if sort_col == col {
-                            if sort_asc { format!("{name} ▲") } else { format!("{name} ▼") }
+                            if sort_asc {
+                                format!("{name} ▲")
+                            } else {
+                                format!("{name} ▼")
+                            }
                         } else {
                             name.to_string()
                         }
@@ -679,50 +780,70 @@ impl UmapApp {
 
                     let avail = ui.available_size();
                     ui.allocate_ui(avail, |ui| {
-                    egui::ScrollArea::horizontal().show(ui, |ui| {
-                    TableBuilder::new(ui)
-                        .striped(true)
-                        .resizable(true)
-                        .min_scrolled_height(0.0)
-                        .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
-                        .column(Column::initial(60.0).range(40.0..=120.0))
-                        .column(Column::initial(140.0).range(60.0..=400.0))
-                        .column(Column::initial(200.0).range(80.0..=f32::INFINITY))
-                        .column(Column::initial(110.0).range(60.0..=200.0))
-                        .column(Column::initial(110.0).range(60.0..=200.0))
-                        .header(row_height, |mut header| {
-                            for (col, name) in [
-                                (SortCol::Row,      "#"),
-                                (SortCol::Category, "Label"),
-                                (SortCol::Label,    "ID"),
-                                (SortCol::X,        "X"),
-                                (SortCol::Y,        "Y"),
-                            ] {
-                                header.col(|ui| {
-                                    if ui.button(col_label(name, col)).clicked() {
-                                        clicked_col = Some(col);
+                        egui::ScrollArea::horizontal().show(ui, |ui| {
+                            TableBuilder::new(ui)
+                                .striped(true)
+                                .resizable(true)
+                                .min_scrolled_height(0.0)
+                                .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
+                                .column(Column::initial(60.0).range(40.0..=120.0))
+                                .column(Column::initial(140.0).range(60.0..=400.0))
+                                .column(Column::initial(200.0).range(80.0..=f32::INFINITY))
+                                .column(Column::initial(110.0).range(60.0..=200.0))
+                                .column(Column::initial(110.0).range(60.0..=200.0))
+                                .header(row_height, |mut header| {
+                                    for (col, name) in [
+                                        (SortCol::Row, "#"),
+                                        (SortCol::Category, "Label"),
+                                        (SortCol::Label, "ID"),
+                                        (SortCol::X, "X"),
+                                        (SortCol::Y, "Y"),
+                                    ] {
+                                        header.col(|ui| {
+                                            if ui.button(col_label(name, col)).clicked() {
+                                                clicked_col = Some(col);
+                                            }
+                                        });
                                     }
+                                })
+                                .body(|body| {
+                                    body.rows(row_height, total, |mut row| {
+                                        let row_idx = row.index();
+                                        let sel_idx = sorted_rows[row_idx];
+                                        let idx = selected_indices[sel_idx];
+                                        let p = &cloud.points[idx];
+                                        let category = cloud
+                                            .categories
+                                            .get(idx)
+                                            .map(|s| s.as_str())
+                                            .unwrap_or("");
+                                        let label =
+                                            cloud.labels.get(idx).map(|s| s.as_str()).unwrap_or("");
+                                        let category_display = if category.is_empty() {
+                                            "(unlabeled)"
+                                        } else {
+                                            category
+                                        };
+                                        let label_display =
+                                            if label.is_empty() { "(no id)" } else { label };
+                                        row.col(|ui| {
+                                            ui.monospace(format!("{}", sel_idx + 1));
+                                        });
+                                        row.col(|ui| {
+                                            ui.label(category_display);
+                                        });
+                                        row.col(|ui| {
+                                            ui.label(label_display);
+                                        });
+                                        row.col(|ui| {
+                                            ui.monospace(format!("{:.6}", p.x));
+                                        });
+                                        row.col(|ui| {
+                                            ui.monospace(format!("{:.6}", p.y));
+                                        });
+                                    });
                                 });
-                            }
-                        })
-                        .body(|body| {
-                            body.rows(row_height, total, |mut row| {
-                                let row_idx = row.index();
-                                let sel_idx = sorted_rows[row_idx];
-                                let idx = selected_indices[sel_idx];
-                                let p = &cloud.points[idx];
-                                let category = cloud.categories.get(idx).map(|s| s.as_str()).unwrap_or("");
-                                let label    = cloud.labels.get(idx).map(|s| s.as_str()).unwrap_or("");
-                                let category_display = if category.is_empty() { "(unlabeled)" } else { category };
-                                let label_display    = if label.is_empty()    { "(no id)"    } else { label    };
-                                row.col(|ui| { ui.monospace(format!("{}", sel_idx + 1)); });
-                                row.col(|ui| { ui.label(category_display); });
-                                row.col(|ui| { ui.label(label_display); });
-                                row.col(|ui| { ui.monospace(format!("{:.6}", p.x)); });
-                                row.col(|ui| { ui.monospace(format!("{:.6}", p.y)); });
-                            });
-                        });
-                    }); // ScrollArea::horizontal
+                        }); // ScrollArea::horizontal
                     }); // allocate_ui
 
                     if let Some(col) = clicked_col {
@@ -759,15 +880,21 @@ impl UmapApp {
         let mut histogram_click: Option<String> = None;
         if !self.category_histogram.is_empty() && self.histogram_visible {
             // Compute default width from content so labels are fully visible on first show.
-            const GAP_W_OUTER:   f32 = 6.0;
+            const GAP_W_OUTER: f32 = 6.0;
             const COUNT_W_OUTER: f32 = 52.0;
             const LABEL_PAD_OUTER: f32 = 8.0;
             const BAR_DEFAULT: f32 = 80.0;
             let font_id_outer = egui::FontId::proportional(11.0);
-            let max_label_w = self.category_histogram.iter()
-                .map(|(cat, _)| ctx.fonts(|f| f.layout_no_wrap(
-                    cat.clone(), font_id_outer.clone(), egui::Color32::WHITE,
-                ).size().x))
+            let max_label_w = self
+                .category_histogram
+                .iter()
+                .map(|(cat, _)| {
+                    ctx.fonts(|f| {
+                        f.layout_no_wrap(cat.clone(), font_id_outer.clone(), egui::Color32::WHITE)
+                            .size()
+                            .x
+                    })
+                })
                 .fold(0.0_f32, f32::max)
                 + LABEL_PAD_OUTER;
             let computed_default = max_label_w + GAP_W_OUTER + COUNT_W_OUTER + BAR_DEFAULT;
@@ -777,33 +904,51 @@ impl UmapApp {
                 .resizable(true)
                 .show(ctx, |ui| {
                     ui.horizontal(|ui| {
-                        ui.add(egui::Label::new(
-                            egui::RichText::new("Category histogram").heading()
-                        ).truncate());
+                        ui.add(
+                            egui::Label::new(egui::RichText::new("Category histogram").heading())
+                                .truncate(),
+                        );
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.small_button("▶").on_hover_text("Hide histogram").clicked() {
+                            if ui
+                                .small_button("▶")
+                                .on_hover_text("Hide histogram")
+                                .clicked()
+                            {
                                 self.histogram_visible = false;
                             }
                         });
                     });
-                    ui.add(egui::Label::new(
-                        egui::RichText::new("Click a label to highlight its points")
-                            .size(10.0)
-                            .italics()
-                            .color(ui.visuals().weak_text_color())
-                    ).truncate());
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new("Click a label to highlight its points")
+                                .size(10.0)
+                                .italics()
+                                .color(ui.visuals().weak_text_color()),
+                        )
+                        .truncate(),
+                    );
                     ui.separator();
 
-                    let max_count = self.category_histogram.first().map(|(_, c)| *c).unwrap_or(1);
-                    const GAP_W:   f32 = 6.0;
+                    let max_count = self
+                        .category_histogram
+                        .first()
+                        .map(|(_, c)| *c)
+                        .unwrap_or(1);
+                    const GAP_W: f32 = 6.0;
                     const COUNT_W: f32 = 52.0;
                     const LABEL_PADDING: f32 = 8.0;
                     let font_id = egui::FontId::proportional(11.0);
                     let avail = ui.available_width();
-                    let raw_label_w = self.category_histogram.iter()
-                        .map(|(cat, _)| ui.fonts(|f| f.layout_no_wrap(
-                            cat.clone(), font_id.clone(), egui::Color32::WHITE,
-                        ).size().x))
+                    let raw_label_w = self
+                        .category_histogram
+                        .iter()
+                        .map(|(cat, _)| {
+                            ui.fonts(|f| {
+                                f.layout_no_wrap(cat.clone(), font_id.clone(), egui::Color32::WHITE)
+                                    .size()
+                                    .x
+                            })
+                        })
                         .fold(0.0_f32, f32::max)
                         + LABEL_PADDING;
                     // Cap label_w so that label_w + GAP_W + bar + COUNT_W <= avail for any bar >= 0.
@@ -818,13 +963,25 @@ impl UmapApp {
                             let is_focused = focused.as_deref() == Some(cat.as_str());
                             // Look up the scatter plot color for this category from any matching point.
                             // "(unlabeled)" in the histogram corresponds to empty-string categories.
-                            let bar_color = self.cloud.categories.iter().zip(self.cloud.points.iter())
-                                .find(|(c, _)| if cat == "(unlabeled)" { c.is_empty() } else { c.as_str() == cat.as_str() })
-                                .map(|(_, p)| egui::Color32::from_rgb(
-                                    (p.r * 255.0) as u8,
-                                    (p.g * 255.0) as u8,
-                                    (p.b * 255.0) as u8,
-                                ))
+                            let bar_color = self
+                                .cloud
+                                .categories
+                                .iter()
+                                .zip(self.cloud.points.iter())
+                                .find(|(c, _)| {
+                                    if cat == "(unlabeled)" {
+                                        c.is_empty()
+                                    } else {
+                                        c.as_str() == cat.as_str()
+                                    }
+                                })
+                                .map(|(_, p)| {
+                                    egui::Color32::from_rgb(
+                                        (p.r * 255.0) as u8,
+                                        (p.g * 255.0) as u8,
+                                        (p.b * 255.0) as u8,
+                                    )
+                                })
                                 .unwrap_or(egui::Color32::from_rgb(80, 140, 220));
                             ui.horizontal(|ui| {
                                 // Zero item spacing so all widths are fully predictable.
@@ -864,13 +1021,17 @@ impl UmapApp {
                                     text_color,
                                 );
                                 // Fixed gap.
-                                ui.allocate_exact_size(egui::vec2(GAP_W, 16.0), egui::Sense::hover());
+                                ui.allocate_exact_size(
+                                    egui::vec2(GAP_W, 16.0),
+                                    egui::Sense::hover(),
+                                );
                                 // Bar.
                                 let (rect, _) = ui.allocate_exact_size(
                                     egui::vec2(bar_max_w, 14.0),
                                     egui::Sense::hover(),
                                 );
-                                ui.painter().rect_filled(rect, 2.0, egui::Color32::from_gray(40));
+                                ui.painter()
+                                    .rect_filled(rect, 2.0, egui::Color32::from_gray(40));
                                 let filled = egui::Rect::from_min_size(
                                     rect.min,
                                     egui::vec2(rect.width() * fraction, rect.height()),
@@ -902,12 +1063,11 @@ impl UmapApp {
         egui::CentralPanel::default()
             .frame(egui::Frame::canvas(&ctx.style()))
             .show(ctx, |ui| {
-                let (rect, response) = ui.allocate_exact_size(
-                    ui.available_size(),
-                    egui::Sense::click_and_drag(),
-                );
+                let (rect, response) =
+                    ui.allocate_exact_size(ui.available_size(), egui::Sense::click_and_drag());
 
-                let hover_screen = ui.input(|i| i.pointer.hover_pos())
+                let hover_screen = ui
+                    .input(|i| i.pointer.hover_pos())
                     .filter(|p| rect.contains(*p));
 
                 // ---- scroll zoom (both modes) ----
@@ -951,7 +1111,8 @@ impl UmapApp {
                             let new_zoom = (self.zoom * touch.zoom_delta).clamp(0.05, 500.0);
                             let actual_f = new_zoom / old_zoom;
                             // Use the current pointer position as the pinch centroid.
-                            let centroid = ui.input(|i| i.pointer.hover_pos())
+                            let centroid = ui
+                                .input(|i| i.pointer.hover_pos())
                                 .unwrap_or(rect.center())
                                 .clamp(rect.min, rect.max);
                             let span_x = (xmax - xmin) * 0.5 / old_zoom;
@@ -973,7 +1134,7 @@ impl UmapApp {
                         if td.x != 0.0 || td.y != 0.0 {
                             let span_x = (xmax - xmin) / self.zoom;
                             let span_y = (ymax - ymin) / self.zoom;
-                            self.pan.x -= td.x / rect.width()  * span_x;
+                            self.pan.x -= td.x / rect.width() * span_x;
                             self.pan.y += td.y / rect.height() * span_y;
                         }
                     }
@@ -1013,7 +1174,10 @@ impl UmapApp {
                             let dp = self.screen_to_data(screen, rect);
                             let radius = self.hit_radius_data(rect);
                             self.hovered_point = self.cloud.grid.query_nearest(
-                                &self.cloud.points, dp.0, dp.1, radius,
+                                &self.cloud.points,
+                                dp.0,
+                                dp.1,
+                                radius,
                             );
                             self.hover_data_pos = self.hovered_point.map(|i| {
                                 let p = &self.cloud.points[i];
@@ -1039,7 +1203,9 @@ impl UmapApp {
                         // Left-click → add vertex or close
                         if response.clicked() {
                             if let Some(screen) = response.interact_pointer_pos() {
-                                if !rect.contains(screen) { return; }
+                                if !rect.contains(screen) {
+                                    return;
+                                }
 
                                 // Check if close to first vertex (close the polygon)
                                 let close = self.poly_verts.first().map_or(false, |&v| {
@@ -1050,7 +1216,8 @@ impl UmapApp {
 
                                 if close {
                                     let poly = self.poly_verts.clone();
-                                    self.selected_indices = self.cloud.apply_polygon_selection(&poly);
+                                    self.selected_indices =
+                                        self.cloud.apply_polygon_selection(&poly);
                                     self.focused_category = None;
                                     self.category_histogram = self.build_category_histogram();
                                     self.rebuild_sorted_rows();
@@ -1094,7 +1261,9 @@ impl UmapApp {
                 // ---- polygon overlay ----
                 if !self.poly_verts.is_empty() {
                     let painter = ui.painter();
-                    let screen_verts: Vec<Pos2> = self.poly_verts.iter()
+                    let screen_verts: Vec<Pos2> = self
+                        .poly_verts
+                        .iter()
                         .map(|&[x, y]| self.data_to_screen(x, y, rect))
                         .collect();
 
@@ -1116,7 +1285,10 @@ impl UmapApp {
                         if let Some(cursor) = hover_screen {
                             painter.line_segment(
                                 [*screen_verts.last().unwrap(), cursor],
-                                egui::Stroke::new(1.0, egui::Color32::from_rgba_premultiplied(255, 220, 50, 120)),
+                                egui::Stroke::new(
+                                    1.0,
+                                    egui::Color32::from_rgba_premultiplied(255, 220, 50, 120),
+                                ),
                             );
                         }
                     }
@@ -1136,19 +1308,23 @@ impl UmapApp {
                     if let Some(cursor) = hover_screen {
                         let tooltip_pos = cursor + egui::vec2(12.0, -24.0);
                         let painter = ui.painter();
-                        let category = self.hovered_point
+                        let category = self
+                            .hovered_point
                             .and_then(|i| self.cloud.categories.get(i))
                             .map(|s| s.as_str())
                             .unwrap_or("");
-                        let label = self.hovered_point
+                        let label = self
+                            .hovered_point
                             .and_then(|i| self.cloud.labels.get(i))
                             .map(|s| s.as_str())
                             .unwrap_or("");
                         let text = match (category.is_empty(), label.is_empty()) {
-                            (true,  true)  => format!("({:.4}, {:.4})", x, y),
-                            (false, true)  => format!("label: {}\n({:.4}, {:.4})", category, x, y),
-                            (true,  false) => format!("id: {}\n({:.4}, {:.4})", label, x, y),
-                            (false, false) => format!("label: {}\nid: {}\n({:.4}, {:.4})", category, label, x, y),
+                            (true, true) => format!("({:.4}, {:.4})", x, y),
+                            (false, true) => format!("label: {}\n({:.4}, {:.4})", category, x, y),
+                            (true, false) => format!("id: {}\n({:.4}, {:.4})", label, x, y),
+                            (false, false) => {
+                                format!("label: {}\nid: {}\n({:.4}, {:.4})", category, label, x, y)
+                            }
                         };
                         let galley = painter.layout(
                             text,
@@ -1248,8 +1424,10 @@ fn export_ids(content: String) {
     let url = web_sys::Url::create_object_url_with_blob(&blob).unwrap();
 
     let a = document
-        .create_element("a").unwrap()
-        .dyn_into::<web_sys::HtmlAnchorElement>().unwrap();
+        .create_element("a")
+        .unwrap()
+        .dyn_into::<web_sys::HtmlAnchorElement>()
+        .unwrap();
     a.set_href(&url);
     a.set_download("selected_ids.txt");
     a.click();

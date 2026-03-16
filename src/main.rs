@@ -60,10 +60,11 @@ fn main() -> eframe::Result<()> {
 
     // --export-bin: write points.bin (with all label sets) for the WASM build, then exit.
     if config.export_bin {
-        let coords      = config.coords_parquet.clone();
-        let out_bin     = config.output_bin.clone();
-        let pairs       = config.label_pairs();
-        let color_files: Vec<Option<String>> = pairs.iter()
+        let coords = config.coords_parquet.clone();
+        let out_bin = config.output_bin.clone();
+        let pairs = config.label_pairs();
+        let color_files: Vec<Option<String>> = pairs
+            .iter()
             .map(|(name, _)| config.color_file_for(name).map(|s| s.to_string()))
             .collect();
         umap_viewer::data::PointCloud::export_to_bin(&coords, &pairs, &color_files, &out_bin)
