@@ -107,6 +107,7 @@ pub struct UmapApp {
     focus_size_scale: f32,                    // size multiplier for focused points
     category_histogram: Vec<(String, usize)>, // (category, count) sorted descending
     pinned_point: Option<usize>,              // point index pinned by clicking a table row
+    scroll_to_pinned: bool,                   // request scroll-to-row on next frame
     show_info_tooltip: bool,                  // show info column in hover tooltip
     histogram_visible: bool,
     table_visible: bool,
@@ -325,6 +326,7 @@ impl UmapApp {
             focus_size_scale: 2.0,
             category_histogram: Vec::new(),
             pinned_point: None,
+            scroll_to_pinned: false,
             show_info_tooltip: false,
             histogram_visible: true,
             table_visible: true,
@@ -859,16 +861,29 @@ impl UmapApp {
                     // ---- incremental search box ----
                     ui.horizontal(|ui| {
                         ui.label("Search:");
-                        let resp = ui.add(
+                        ui.add(
                             egui::TextEdit::singleline(&mut self.label_search)
                                 .hint_text("filter by Label, ID, or Info…")
-                                .desired_width(f32::INFINITY),
+                                .desired_width(120.0),
                         );
-                        if resp.changed() && self.label_search.is_empty() {
-                            // nothing extra needed — filter re-evaluates every frame
-                        }
                         if ui.small_button("✕").on_hover_text("Clear search").clicked() {
                             self.label_search.clear();
+                        }
+                        if self.pinned_point.is_some() {
+                            ui.separator();
+                            if ui.small_button("⊙ Go to selected")
+                                .on_hover_text("Scroll table to the selected row")
+                                .clicked()
+                            {
+                                self.scroll_to_pinned = true;
+                            }
+                            if ui.small_button("✕ Clear focus")
+                                .on_hover_text("Clear the selected point")
+                                .clicked()
+                            {
+                                self.pinned_point = None;
+                                self.sticky_hover_point = None;
+                            }
                         }
                     });
 
@@ -917,6 +932,13 @@ impl UmapApp {
                         }
                     };
 
+                    // Find the visible-row index of the pinned point for scroll-to-row.
+                    let pinned_row_idx: Option<usize> = pinned_point.and_then(|pin_idx| {
+                        visible_rows.iter().position(|&sel_idx| selected_indices[sel_idx] == pin_idx)
+                    });
+                    let do_scroll = self.scroll_to_pinned;
+                    self.scroll_to_pinned = false;
+
                     let avail_h = ui.available_height();
                     egui::ScrollArea::horizontal().show(ui, |ui| {
                         let mut tb = TableBuilder::new(ui)
@@ -930,6 +952,11 @@ impl UmapApp {
                             .column(Column::initial(60.0).range(40.0..=120.0))
                             .column(Column::initial(140.0).range(60.0..=400.0))
                             .column(Column::initial(200.0).range(80.0..=f32::INFINITY));
+                        if do_scroll {
+                            if let Some(row) = pinned_row_idx {
+                                tb = tb.scroll_to_row(row, Some(egui::Align::Center));
+                            }
+                        }
                         if has_info {
                             tb = tb.column(
                                 Column::initial(220.0).range(80.0..=f32::INFINITY),
