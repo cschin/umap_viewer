@@ -78,8 +78,6 @@ enum SortCol {
     Row,
     Category,
     Label,
-    X,
-    Y,
 }
 
 // ---------------------------------------------------------------------------
@@ -446,18 +444,6 @@ impl UmapApp {
                     .map(|s| s.as_str())
                     .unwrap_or("");
                 la.cmp(lb)
-            }),
-            SortCol::X => order.sort_by(|&a, &b| {
-                cloud.points[selected[a]]
-                    .x
-                    .partial_cmp(&cloud.points[selected[b]].x)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            }),
-            SortCol::Y => order.sort_by(|&a, &b| {
-                cloud.points[selected[a]]
-                    .y
-                    .partial_cmp(&cloud.points[selected[b]].y)
-                    .unwrap_or(std::cmp::Ordering::Equal)
             }),
         }
         if !self.table_sort_asc {
@@ -943,9 +929,7 @@ impl UmapApp {
                             .column(Column::exact(24.0)) // pin icon
                             .column(Column::initial(60.0).range(40.0..=120.0))
                             .column(Column::initial(140.0).range(60.0..=400.0))
-                            .column(Column::initial(200.0).range(80.0..=f32::INFINITY))
-                            .column(Column::initial(110.0).range(60.0..=200.0))
-                            .column(Column::initial(110.0).range(60.0..=200.0));
+                            .column(Column::initial(200.0).range(80.0..=f32::INFINITY));
                         if has_info {
                             tb = tb.column(
                                 Column::initial(220.0).range(80.0..=f32::INFINITY),
@@ -957,8 +941,6 @@ impl UmapApp {
                                     (SortCol::Row, "#"),
                                     (SortCol::Category, "Label"),
                                     (SortCol::Label, "ID"),
-                                    (SortCol::X, "X"),
-                                    (SortCol::Y, "Y"),
                                 ] {
                                     header.col(|ui| {
                                         if ui.button(col_label(name, col)).clicked() {
@@ -1010,12 +992,6 @@ impl UmapApp {
                                     });
                                     row.col(|ui| {
                                         ui.label(label_display);
-                                    });
-                                    row.col(|ui| {
-                                        ui.monospace(format!("{:.6}", p.x));
-                                    });
-                                    row.col(|ui| {
-                                        ui.monospace(format!("{:.6}", p.y));
                                     });
                                     if has_info {
                                         let info_str = cloud
@@ -1552,7 +1528,7 @@ impl UmapApp {
                 }
 
                 // ---- transient hover tooltip (painter-based, non-interactive) ----
-                if let Some((x, y)) = self.hover_data_pos {
+                if self.hover_data_pos.is_some() {
                     if let Some(cursor) = hover_screen {
                         let tooltip_pos = cursor + egui::vec2(12.0, -24.0);
                         let painter = ui.painter();
@@ -1570,7 +1546,6 @@ impl UmapApp {
                         if !category.is_empty() { lines.push(format!("label: {}", category)); }
                         if !label.is_empty()    { lines.push(format!("id: {}", label)); }
                         if has_link             { lines.push("click to pin info".to_string()); }
-                        lines.push(format!("({:.4}, {:.4})", x, y));
                         let text = lines.join("\n");
                         let galley = painter.layout(text, egui::FontId::monospace(11.0),
                             egui::Color32::WHITE, 400.0);
@@ -1627,7 +1602,6 @@ impl UmapApp {
                                         ui.label(text);
                                     }
                                 }
-                                ui.monospace(format!("({:.4}, {:.4})", px, py));
                             });
                         });
                     // Draw a callout triangle on whichever popup edge faces the point.
