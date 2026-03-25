@@ -98,9 +98,8 @@ pub struct UmapApp {
     // hover tooltip
     hover_data_pos: Option<(f32, f32)>,
     hovered_point: Option<usize>,
-    // sticky hover popup (stays open while cursor is inside popup area)
+    // sticky pinned popup (set on click, cleared by close button)
     sticky_hover_point: Option<usize>,
-    sticky_hover_pos: Option<egui::Pos2>,
     // selection mode
     mode: Mode,
     poly_verts: Vec<[f32; 2]>,                // data-space polygon vertices
@@ -320,7 +319,6 @@ impl UmapApp {
             hover_data_pos: None,
             hovered_point: None,
             sticky_hover_point: None,
-            sticky_hover_pos: None,
             mode: Mode::Navigate,
             poly_verts: Vec::new(),
             poly_closed: false,
@@ -1398,7 +1396,6 @@ impl UmapApp {
                             if response.clicked() {
                                 if let Some(idx) = self.hovered_point {
                                     self.sticky_hover_point = Some(idx);
-                                    self.sticky_hover_pos = Some(screen + egui::vec2(12.0, -24.0));
                                 }
                             }
                         } else {
@@ -1586,10 +1583,12 @@ impl UmapApp {
                 }
 
                 // ---- sticky pinned popup (interactive: link + close button) ----
+                // Position is recomputed each frame from data coords so it follows pan/zoom.
                 let mut close_sticky = false;
-                if let (Some(idx), Some(pos)) = (self.sticky_hover_point, self.sticky_hover_pos) {
+                if let Some(idx) = self.sticky_hover_point {
                     let (px, py) = self.cloud.points.get(idx)
                         .map(|p| (p.x, p.y)).unwrap_or((0.0, 0.0));
+                    let pos = self.data_to_screen(px, py, rect) + egui::vec2(12.0, -24.0);
                     let category = self.cloud.categories.get(idx).cloned().unwrap_or_default();
                     let label = self.cloud.labels.get(idx).cloned().unwrap_or_default();
                     let info_link: Option<(String, Option<String>)> = if self.show_info_tooltip {
@@ -1632,7 +1631,6 @@ impl UmapApp {
                 }
                 if close_sticky {
                     self.sticky_hover_point = None;
-                    self.sticky_hover_pos = None;
                 }
             });
     }
