@@ -1601,7 +1601,8 @@ impl UmapApp {
                     } else {
                         None
                     };
-                    egui::Area::new(egui::Id::new("sticky_popup"))
+                    let point_screen = self.data_to_screen(px, py, rect);
+                    let area_resp = egui::Area::new(egui::Id::new("sticky_popup"))
                         .fixed_pos(pos)
                         .order(egui::Order::Tooltip)
                         .show(ui.ctx(), |ui| {
@@ -1628,6 +1629,21 @@ impl UmapApp {
                                 ui.monospace(format!("({:.4}, {:.4})", px, py));
                             });
                         });
+                    // Draw a callout triangle on the left edge pointing toward the point.
+                    let popup_rect = area_resp.response.rect;
+                    let anchor_y = point_screen.y
+                        .clamp(popup_rect.top() + 8.0, popup_rect.bottom() - 8.0);
+                    let tip = egui::pos2(popup_rect.left() - 8.0, anchor_y);
+                    let base_top = egui::pos2(popup_rect.left(), anchor_y - 6.0);
+                    let base_bot = egui::pos2(popup_rect.left(), anchor_y + 6.0);
+                    let fill = ui.visuals().window_fill();
+                    let stroke = ui.visuals().window_stroke();
+                    let popup_painter = ui.ctx().layer_painter(area_resp.response.layer_id);
+                    popup_painter.add(egui::Shape::convex_polygon(
+                        vec![tip, base_top, base_bot],
+                        fill,
+                        stroke,
+                    ));
                 }
                 if close_sticky {
                     self.sticky_hover_point = None;
