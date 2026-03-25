@@ -1610,18 +1610,14 @@ impl UmapApp {
                         .order(egui::Order::Tooltip)
                         .show(ui.ctx(), |ui| {
                             egui::Frame::popup(ui.style()).show(ui, |ui| {
-                                ui.set_max_width(320.0);
+                                ui.set_max_width(300.0);
                                 ui.horizontal(|ui| {
-                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                        if ui.small_button("✕").clicked() {
-                                            close_sticky = true;
-                                        }
-                                        ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                                            if !category.is_empty() {
-                                                ui.monospace(format!("label: {}", category));
-                                            }
-                                        });
-                                    });
+                                    if !category.is_empty() {
+                                        ui.monospace(format!("label: {}", category));
+                                    }
+                                    if ui.small_button("✕").clicked() {
+                                        close_sticky = true;
+                                    }
                                 });
                                 if !label.is_empty() {
                                     ui.monospace(format!("id: {}", label));
