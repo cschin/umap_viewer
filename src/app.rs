@@ -1549,54 +1549,51 @@ impl UmapApp {
                 if let Some((x, y)) = self.hover_data_pos {
                     if let Some(cursor) = hover_screen {
                         let tooltip_pos = cursor + egui::vec2(12.0, -24.0);
-                        let painter = ui.painter();
                         let category = self
                             .hovered_point
                             .and_then(|i| self.cloud.categories.get(i))
-                            .map(|s| s.as_str())
-                            .unwrap_or("");
+                            .cloned()
+                            .unwrap_or_default();
                         let label = self
                             .hovered_point
                             .and_then(|i| self.cloud.labels.get(i))
-                            .map(|s| s.as_str())
-                            .unwrap_or("");
-                        let info_display = if self.show_info_tooltip {
+                            .cloned()
+                            .unwrap_or_default();
+                        // (display_text, Option<url>) for info
+                        let info_link: Option<(String, Option<String>)> = if self.show_info_tooltip {
                             self.hovered_point
                                 .and_then(|i| self.cloud.info.get(i))
-                                .map(|s| {
-                                    let (text, _url) = parse_info_link(s.as_str());
-                                    text.to_string()
-                                })
                                 .filter(|s| !s.is_empty())
+                                .map(|s| {
+                                    let (text, url) = parse_info_link(s.as_str());
+                                    (text.to_string(), url.map(|u| u.to_string()))
+                                })
                         } else {
                             None
                         };
-                        let text = match (category.is_empty(), label.is_empty(), &info_display) {
-                            (true, true, None) => format!("({:.4}, {:.4})", x, y),
-                            (false, true, None) => format!("label: {}\n({:.4}, {:.4})", category, x, y),
-                            (true, false, None) => format!("id: {}\n({:.4}, {:.4})", label, x, y),
-                            (false, false, None) => {
-                                format!("label: {}\nid: {}\n({:.4}, {:.4})", category, label, x, y)
-                            }
-                            (true, true, Some(info)) => format!("{}\n({:.4}, {:.4})", info, x, y),
-                            (false, true, Some(info)) => format!("label: {}\n{}\n({:.4}, {:.4})", category, info, x, y),
-                            (true, false, Some(info)) => format!("id: {}\n{}\n({:.4}, {:.4})", label, info, x, y),
-                            (false, false, Some(info)) => {
-                                format!("label: {}\nid: {}\n{}\n({:.4}, {:.4})", category, label, info, x, y)
-                            }
-                        };
-                        let galley = painter.layout(
-                            text,
-                            egui::FontId::monospace(11.0),
-                            egui::Color32::WHITE,
-                            400.0,
+                        egui::show_tooltip_at(
+                            ui.ctx(),
+                            ui.layer_id(),
+                            egui::Id::new("point_tooltip"),
+                            tooltip_pos,
+                            |ui| {
+                                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
+                                if !category.is_empty() {
+                                    ui.monospace(format!("label: {}", category));
+                                }
+                                if !label.is_empty() {
+                                    ui.monospace(format!("id: {}", label));
+                                }
+                                if let Some((text, url)) = &info_link {
+                                    if let Some(url) = url {
+                                        ui.hyperlink_to(text, url);
+                                    } else {
+                                        ui.label(text);
+                                    }
+                                }
+                                ui.monospace(format!("({:.4}, {:.4})", x, y));
+                            },
                         );
-                        let bg = egui::Rect::from_min_size(
-                            tooltip_pos - egui::vec2(3.0, 3.0),
-                            galley.size() + egui::vec2(6.0, 6.0),
-                        );
-                        painter.rect_filled(bg, 3.0, egui::Color32::from_black_alpha(200));
-                        painter.galley(tooltip_pos, galley, egui::Color32::WHITE);
                     }
                 }
             });
