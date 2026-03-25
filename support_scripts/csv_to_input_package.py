@@ -90,10 +90,13 @@ def load_labels(path: Path) -> pl.DataFrame:
             f"Labels CSV '{path}' is missing required columns: {missing}\n"
             f"  Found: {df.columns}"
         )
-    return df.select([
+    cols = [
         pl.col("id").cast(pl.Utf8),
         pl.col("labels").cast(pl.Utf8),
-    ])
+    ]
+    if "info" in df.columns:
+        cols.append(pl.col("info").cast(pl.Utf8))
+    return df.select(cols)
 
 
 # ---------------------------------------------------------------------------
