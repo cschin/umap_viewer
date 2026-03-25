@@ -957,7 +957,6 @@ impl UmapApp {
                                     let row_idx = row.index();
                                     let sel_idx = visible_rows[row_idx];
                                     let idx = selected_indices[sel_idx];
-                                    let p = &cloud.points[idx];
                                     let is_pinned = pinned_point == Some(idx);
                                     row.set_selected(is_pinned);
                                     let category = cloud
