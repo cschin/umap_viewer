@@ -1368,10 +1368,13 @@ impl UmapApp {
                                 let p = &self.cloud.points[i];
                                 (p.x, p.y)
                             });
-                            // click on point → pin sticky tooltip
                             if response.clicked() {
                                 if let Some(idx) = self.hovered_point {
+                                    // click on point → pin sticky tooltip
                                     self.sticky_hover_point = Some(idx);
+                                } else {
+                                    // click on empty space → dismiss sticky tooltip
+                                    self.sticky_hover_point = None;
                                 }
                             }
                         } else {
@@ -1528,10 +1531,11 @@ impl UmapApp {
                 }
 
                 // ---- transient hover tooltip (painter-based, non-interactive) ----
-                if self.hover_data_pos.is_some() {
+                // Suppressed when the sticky popup is already pinned for this point.
+                let sticky_covers_hover = self.hovered_point.is_some()
+                    && self.hovered_point == self.sticky_hover_point;
+                if self.hover_data_pos.is_some() && !sticky_covers_hover {
                     if let Some(cursor) = hover_screen {
-                        let tooltip_pos = cursor + egui::vec2(12.0, -24.0);
-                        let painter = ui.painter();
                         let category = self.hovered_point
                             .and_then(|i| self.cloud.categories.get(i))
                             .map(|s| s.as_str()).unwrap_or("");
@@ -1545,15 +1549,22 @@ impl UmapApp {
                         let mut lines: Vec<String> = Vec::new();
                         if !category.is_empty() { lines.push(format!("label: {}", category)); }
                         if !label.is_empty()    { lines.push(format!("id: {}", label)); }
-                        if has_link             { lines.push("click to pin info".to_string()); }
-                        let text = lines.join("\n");
-                        let galley = painter.layout(text, egui::FontId::monospace(11.0),
-                            egui::Color32::WHITE, 400.0);
-                        let bg = egui::Rect::from_min_size(
-                            tooltip_pos - egui::vec2(3.0, 3.0),
-                            galley.size() + egui::vec2(6.0, 6.0));
-                        painter.rect_filled(bg, 3.0, egui::Color32::from_black_alpha(200));
-                        painter.galley(tooltip_pos, galley, egui::Color32::WHITE);
+                        if has_link             { lines.push("click to pin".to_string()); }
+                        else if self.sticky_hover_point.is_none() {
+                            lines.push("click to pin".to_string());
+                        }
+                        if !lines.is_empty() {
+                            let tooltip_pos = cursor + egui::vec2(12.0, -24.0);
+                            let painter = ui.painter();
+                            let text = lines.join("\n");
+                            let galley = painter.layout(text, egui::FontId::monospace(11.0),
+                                egui::Color32::WHITE, 400.0);
+                            let bg = egui::Rect::from_min_size(
+                                tooltip_pos - egui::vec2(3.0, 3.0),
+                                galley.size() + egui::vec2(6.0, 6.0));
+                            painter.rect_filled(bg, 3.0, egui::Color32::from_black_alpha(200));
+                            painter.galley(tooltip_pos, galley, egui::Color32::WHITE);
+                        }
                     }
                 }
 
