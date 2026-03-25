@@ -1397,17 +1397,11 @@ impl UmapApp {
                                 let p = &self.cloud.points[i];
                                 (p.x, p.y)
                             });
-                            if let Some(idx) = self.hovered_point {
-                                self.sticky_hover_point = Some(idx);
-                                self.sticky_hover_pos = Some(screen + egui::vec2(12.0, -24.0));
-                                // click on point → open URL if info has a link
-                                if response.clicked() && self.show_info_tooltip {
-                                    if let Some(info) = self.cloud.info.get(idx) {
-                                        let (_, url) = parse_info_link(info.as_str());
-                                        if let Some(url) = url {
-                                            ui.ctx().open_url(egui::OpenUrl::new_tab(url));
-                                        }
-                                    }
+                            // click on point → pin sticky tooltip
+                            if response.clicked() {
+                                if let Some(idx) = self.hovered_point {
+                                    self.sticky_hover_point = Some(idx);
+                                    self.sticky_hover_pos = Some(screen + egui::vec2(12.0, -24.0));
                                 }
                             }
                         } else {
@@ -1563,40 +1557,78 @@ impl UmapApp {
                     }
                 }
 
-                // ---- hover tooltip ----
+                // ---- transient hover tooltip (painter-based, non-interactive) ----
+                if let Some((x, y)) = self.hover_data_pos {
+                    if let Some(cursor) = hover_screen {
+                        let tooltip_pos = cursor + egui::vec2(12.0, -24.0);
+                        let painter = ui.painter();
+                        let category = self.hovered_point
+                            .and_then(|i| self.cloud.categories.get(i))
+                            .map(|s| s.as_str()).unwrap_or("");
+                        let label = self.hovered_point
+                            .and_then(|i| self.cloud.labels.get(i))
+                            .map(|s| s.as_str()).unwrap_or("");
+                        let has_link = self.show_info_tooltip && self.hovered_point
+                            .and_then(|i| self.cloud.info.get(i))
+                            .map(|s| parse_info_link(s.as_str()).1.is_some())
+                            .unwrap_or(false);
+                        let mut lines: Vec<String> = Vec::new();
+                        if !category.is_empty() { lines.push(format!("label: {}", category)); }
+                        if !label.is_empty()    { lines.push(format!("id: {}", label)); }
+                        if has_link             { lines.push("click to pin info".to_string()); }
+                        lines.push(format!("({:.4}, {:.4})", x, y));
+                        let text = lines.join("\n");
+                        let galley = painter.layout(text, egui::FontId::monospace(11.0),
+                            egui::Color32::WHITE, 400.0);
+                        let bg = egui::Rect::from_min_size(
+                            tooltip_pos - egui::vec2(3.0, 3.0),
+                            galley.size() + egui::vec2(6.0, 6.0));
+                        painter.rect_filled(bg, 3.0, egui::Color32::from_black_alpha(200));
+                        painter.galley(tooltip_pos, galley, egui::Color32::WHITE);
+                    }
+                }
+
+                // ---- sticky pinned popup (interactive: link + close button) ----
+                let mut close_sticky = false;
                 if let (Some(idx), Some(pos)) = (self.sticky_hover_point, self.sticky_hover_pos) {
                     let (px, py) = self.cloud.points.get(idx)
-                        .map(|p| (p.x, p.y))
-                        .unwrap_or((0.0, 0.0));
+                        .map(|p| (p.x, p.y)).unwrap_or((0.0, 0.0));
                     let category = self.cloud.categories.get(idx).cloned().unwrap_or_default();
                     let label = self.cloud.labels.get(idx).cloned().unwrap_or_default();
-                    // info: (display_text, has_url)
-                    let info_display: Option<(String, bool)> = if self.show_info_tooltip {
+                    let info_link: Option<(String, Option<String>)> = if self.show_info_tooltip {
                         self.cloud.info.get(idx)
                             .filter(|s| !s.is_empty())
                             .map(|s| {
                                 let (text, url) = parse_info_link(s.as_str());
-                                (text.to_string(), url.is_some())
+                                (text.to_string(), url.map(|u| u.to_string()))
                             })
                     } else {
                         None
                     };
-                    egui::Area::new(egui::Id::new("hover_popup"))
+                    egui::Area::new(egui::Id::new("sticky_popup"))
                         .fixed_pos(pos)
                         .order(egui::Order::Tooltip)
-                        .interactable(false)
                         .show(ui.ctx(), |ui| {
                             egui::Frame::popup(ui.style()).show(ui, |ui| {
-                                ui.set_max_width(300.0);
-                                if !category.is_empty() {
-                                    ui.monospace(format!("label: {}", category));
-                                }
+                                ui.set_max_width(320.0);
+                                ui.horizontal(|ui| {
+                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                        if ui.small_button("✕").clicked() {
+                                            close_sticky = true;
+                                        }
+                                        ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                                            if !category.is_empty() {
+                                                ui.monospace(format!("label: {}", category));
+                                            }
+                                        });
+                                    });
+                                });
                                 if !label.is_empty() {
                                     ui.monospace(format!("id: {}", label));
                                 }
-                                if let Some((text, has_url)) = &info_display {
-                                    if *has_url {
-                                        ui.label(format!("{} [click to open]", text));
+                                if let Some((text, url)) = &info_link {
+                                    if let Some(url) = url {
+                                        ui.hyperlink_to(text, url);
                                     } else {
                                         ui.label(text);
                                     }
@@ -1605,8 +1637,7 @@ impl UmapApp {
                             });
                         });
                 }
-                // Clear tooltip when cursor leaves the point
-                if self.hovered_point.is_none() {
+                if close_sticky {
                     self.sticky_hover_point = None;
                     self.sticky_hover_pos = None;
                 }
