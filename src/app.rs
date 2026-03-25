@@ -1400,6 +1400,15 @@ impl UmapApp {
                             if let Some(idx) = self.hovered_point {
                                 self.sticky_hover_point = Some(idx);
                                 self.sticky_hover_pos = Some(screen + egui::vec2(12.0, -24.0));
+                                // click on point → open URL if info has a link
+                                if response.clicked() && self.show_info_tooltip {
+                                    if let Some(info) = self.cloud.info.get(idx) {
+                                        let (_, url) = parse_info_link(info.as_str());
+                                        if let Some(url) = url {
+                                            ui.ctx().open_url(egui::OpenUrl::new_tab(url));
+                                        }
+                                    }
+                                }
                             }
                         } else {
                             self.hovered_point = None;
@@ -1554,29 +1563,28 @@ impl UmapApp {
                     }
                 }
 
-                // ---- sticky hover popup ----
-                // Shown while cursor is over a point OR while cursor is inside the popup.
-                // This allows hyperlinks inside the popup to be clicked.
-                let mut popup_hovered = false;
+                // ---- hover tooltip ----
                 if let (Some(idx), Some(pos)) = (self.sticky_hover_point, self.sticky_hover_pos) {
                     let (px, py) = self.cloud.points.get(idx)
                         .map(|p| (p.x, p.y))
                         .unwrap_or((0.0, 0.0));
                     let category = self.cloud.categories.get(idx).cloned().unwrap_or_default();
                     let label = self.cloud.labels.get(idx).cloned().unwrap_or_default();
-                    let info_link: Option<(String, Option<String>)> = if self.show_info_tooltip {
+                    // info: (display_text, has_url)
+                    let info_display: Option<(String, bool)> = if self.show_info_tooltip {
                         self.cloud.info.get(idx)
                             .filter(|s| !s.is_empty())
                             .map(|s| {
                                 let (text, url) = parse_info_link(s.as_str());
-                                (text.to_string(), url.map(|u| u.to_string()))
+                                (text.to_string(), url.is_some())
                             })
                     } else {
                         None
                     };
-                    let area_resp = egui::Area::new(egui::Id::new("hover_popup"))
+                    egui::Area::new(egui::Id::new("hover_popup"))
                         .fixed_pos(pos)
                         .order(egui::Order::Tooltip)
+                        .interactable(false)
                         .show(ui.ctx(), |ui| {
                             egui::Frame::popup(ui.style()).show(ui, |ui| {
                                 ui.set_max_width(300.0);
@@ -1586,9 +1594,9 @@ impl UmapApp {
                                 if !label.is_empty() {
                                     ui.monospace(format!("id: {}", label));
                                 }
-                                if let Some((text, url)) = &info_link {
-                                    if let Some(url) = url {
-                                        ui.hyperlink_to(text, url);
+                                if let Some((text, has_url)) = &info_display {
+                                    if *has_url {
+                                        ui.label(format!("{} [click to open]", text));
                                     } else {
                                         ui.label(text);
                                     }
@@ -1596,10 +1604,9 @@ impl UmapApp {
                                 ui.monospace(format!("({:.4}, {:.4})", px, py));
                             });
                         });
-                    popup_hovered = area_resp.response.contains_pointer();
                 }
-                // Clear sticky popup when cursor is neither over a point nor inside the popup
-                if self.hovered_point.is_none() && !popup_hovered {
+                // Clear tooltip when cursor leaves the point
+                if self.hovered_point.is_none() {
                     self.sticky_hover_point = None;
                     self.sticky_hover_pos = None;
                 }
