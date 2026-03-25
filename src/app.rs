@@ -1530,48 +1530,12 @@ impl UmapApp {
                     }
                 }
 
-                // ---- transient hover tooltip (painter-based, non-interactive) ----
-                // Suppressed when the sticky popup is already pinned for this point.
-                let sticky_covers_hover = self.hovered_point.is_some()
-                    && self.hovered_point == self.sticky_hover_point;
-                if self.hover_data_pos.is_some() && !sticky_covers_hover {
-                    if let Some(cursor) = hover_screen {
-                        let category = self.hovered_point
-                            .and_then(|i| self.cloud.categories.get(i))
-                            .map(|s| s.as_str()).unwrap_or("");
-                        let label = self.hovered_point
-                            .and_then(|i| self.cloud.labels.get(i))
-                            .map(|s| s.as_str()).unwrap_or("");
-                        let has_link = self.show_info_tooltip && self.hovered_point
-                            .and_then(|i| self.cloud.info.get(i))
-                            .map(|s| parse_info_link(s.as_str()).1.is_some())
-                            .unwrap_or(false);
-                        let mut lines: Vec<String> = Vec::new();
-                        if !category.is_empty() { lines.push(format!("label: {}", category)); }
-                        if !label.is_empty()    { lines.push(format!("id: {}", label)); }
-                        if has_link             { lines.push("click to pin".to_string()); }
-                        else if self.sticky_hover_point.is_none() {
-                            lines.push("click to pin".to_string());
-                        }
-                        if !lines.is_empty() {
-                            let tooltip_pos = cursor + egui::vec2(12.0, -24.0);
-                            let painter = ui.painter();
-                            let text = lines.join("\n");
-                            let galley = painter.layout(text, egui::FontId::monospace(11.0),
-                                egui::Color32::WHITE, 400.0);
-                            let bg = egui::Rect::from_min_size(
-                                tooltip_pos - egui::vec2(3.0, 3.0),
-                                galley.size() + egui::vec2(6.0, 6.0));
-                            painter.rect_filled(bg, 3.0, egui::Color32::from_black_alpha(200));
-                            painter.galley(tooltip_pos, galley, egui::Color32::WHITE);
-                        }
-                    }
-                }
-
-                // ---- sticky pinned popup (interactive: link + close button) ----
-                // Position is recomputed each frame from data coords so it follows pan/zoom.
+                // ---- unified popup: shows on hover, stays pinned after click ----
+                // display_idx: prefer pinned, fall back to hovered
+                let display_idx = self.sticky_hover_point.or(self.hovered_point);
+                let is_pinned   = self.sticky_hover_point.is_some();
                 let mut close_sticky = false;
-                if let Some(idx) = self.sticky_hover_point {
+                if let Some(idx) = display_idx {
                     let (px, py) = self.cloud.points.get(idx)
                         .map(|p| (p.x, p.y)).unwrap_or((0.0, 0.0));
                     let pos = self.data_to_screen(px, py, rect) + egui::vec2(12.0, -24.0);
@@ -1588,7 +1552,7 @@ impl UmapApp {
                         None
                     };
                     let point_screen = self.data_to_screen(px, py, rect);
-                    let area_resp = egui::Area::new(egui::Id::new("sticky_popup"))
+                    let area_resp = egui::Area::new(egui::Id::new("point_popup"))
                         .fixed_pos(pos)
                         .order(egui::Order::Tooltip)
                         .constrain_to(rect)
@@ -1599,7 +1563,7 @@ impl UmapApp {
                                     if !category.is_empty() {
                                         ui.monospace(format!("label: {}", category));
                                     }
-                                    if ui.small_button("✕").clicked() {
+                                    if is_pinned && ui.small_button("✕").clicked() {
                                         close_sticky = true;
                                     }
                                 });
