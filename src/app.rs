@@ -864,13 +864,14 @@ impl UmapApp {
                         ui.add(
                             egui::TextEdit::singleline(&mut self.label_search)
                                 .hint_text("filter by Label, ID, or Info…")
-                                .desired_width(120.0),
+                                .desired_width(f32::INFINITY),
                         );
                         if ui.small_button("✕").on_hover_text("Clear search").clicked() {
                             self.label_search.clear();
                         }
-                        if self.pinned_point.is_some() {
-                            ui.separator();
+                    });
+                    if self.pinned_point.is_some() {
+                        ui.horizontal(|ui| {
                             if ui.small_button("⊙ Go to selected")
                                 .on_hover_text("Scroll table to the selected row")
                                 .clicked()
@@ -884,8 +885,8 @@ impl UmapApp {
                                 self.pinned_point = None;
                                 self.sticky_hover_point = None;
                             }
-                        }
-                    });
+                        });
+                    }
 
                     let row_height = ui.text_style_height(&egui::TextStyle::Monospace) + 4.0;
                     let sort_col = self.table_sort_col;
