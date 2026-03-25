@@ -97,6 +97,10 @@ pub struct PointCloud {
     pub labels: Vec<String>,
     /// Per-point category string used for colouring and tooltips (active label set).
     pub categories: Vec<String>,
+    /// Per-point info string loaded from the optional `info` column of the primary
+    /// labels parquet.  Plain text or a Markdown-style link `[text](url)`.
+    /// Empty when the column is absent.
+    pub info: Vec<String>,
     /// Display names for all available label sets.
     pub label_set_names: Vec<String>,
     /// Per-point categories for every label set (index matches label_set_names).
@@ -162,6 +166,7 @@ impl PointCloud {
             grid,
             labels: Vec::new(),
             categories: Vec::new(),
+            info: Vec::new(),
             label_set_names: Vec::new(),
             all_categories: Vec::new(),
             category_color_maps: Vec::new(),
@@ -334,6 +339,7 @@ impl PointCloud {
             grid,
             labels,
             categories,
+            info: Vec::new(), // binary format does not carry info
             label_set_names,
             all_categories,
             category_color_maps,
@@ -603,14 +609,43 @@ impl PointCloud {
     ) -> Result<Self, Box<dyn std::error::Error>> {
         use polars::prelude::*;
 
-        let coords = LazyFrame::scan_parquet(coords_path.into(), Default::default())?.select([
-            col("id"),
-            col("coordinates").arr().get(lit(0i64), true).alias("x"),
-            col("coordinates").arr().get(lit(1i64), true).alias("y"),
-        ]);
+        // Accept two coord schemas:
+        //   - Legacy: `coordinates` FixedSizeList<f32,2>  (original parquet files)
+        //   - Flat:   separate `x` and `y` float columns  (csv_to_input_package output)
+        let coords_has_array: bool =
+            LazyFrame::scan_parquet(coords_path.into(), Default::default())
+                .ok()
+                .and_then(|mut lf| lf.collect_schema().ok())
+                .map(|s| s.get("coordinates").is_some())
+                .unwrap_or(false);
 
+        let coords = if coords_has_array {
+            LazyFrame::scan_parquet(coords_path.into(), Default::default())?.select([
+                col("id"),
+                col("coordinates").arr().get(lit(0i64), true).alias("x"),
+                col("coordinates").arr().get(lit(1i64), true).alias("y"),
+            ])
+        } else {
+            LazyFrame::scan_parquet(coords_path.into(), Default::default())?.select([
+                col("id"),
+                col("x"),
+                col("y"),
+            ])
+        };
+
+        // Check whether the labels parquet has an optional `info` column.
+        let has_info: bool = LazyFrame::scan_parquet(labels_path.into(), Default::default())
+            .ok()
+            .and_then(|mut lf| lf.collect_schema().ok())
+            .map(|s| s.get("info").is_some())
+            .unwrap_or(false);
+
+        let mut labels_cols = vec![col("id"), col("labels")];
+        if has_info {
+            labels_cols.push(col("info"));
+        }
         let labels_lf = LazyFrame::scan_parquet(labels_path.into(), Default::default())?
-            .select([col("id"), col("labels")]);
+            .select(labels_cols);
 
         let df = coords
             .join(
@@ -628,6 +663,17 @@ impl PointCloud {
         let xs = xs.f32()?;
         let ys = ys.f32()?;
         let cats_col = df.column("labels")?.str()?;
+
+        // Collect info strings up front (before the point loop consumes other iterators).
+        let info_vec: Vec<String> = if has_info {
+            let ic = df.column("info")?.cast(&DataType::String)?;
+            ic.str()?
+                .into_iter()
+                .map(|v| v.unwrap_or("").to_string())
+                .collect()
+        } else {
+            vec![String::new(); n]
+        };
 
         // Assign a hue per category value.
         let mut category_map: HashMap<String, usize> = HashMap::new();
@@ -688,6 +734,7 @@ impl PointCloud {
             grid,
             labels,
             categories,
+            info: info_vec,
             label_set_names,
             all_categories,
             category_color_maps,

@@ -1,0 +1,101 @@
+id,labels,info
+cluster_D_p03,cluster_D,[cluster_D](https://en.wikipedia.org/wiki/Machine_learning)
+cluster_A_p01,cluster_A,"Point in cluster_A near (2.16, 3.95)"
+cluster_C_p07,cluster_C,
+cluster_E_p01,cluster_E,[cluster_E](https://en.wikipedia.org/wiki/Data_visualization)
+cluster_C_p19,cluster_C,"Point in cluster_C near (0.90, -1.93)"
+cluster_D_p07,cluster_D,
+cluster_E_p08,cluster_E,[cluster_E](https://en.wikipedia.org/wiki/Data_visualization)
+cluster_E_p17,cluster_E,"Point in cluster_E near (-1.51, -3.59)"
+cluster_A_p12,cluster_A,
+cluster_E_p11,cluster_E,[cluster_E](https://en.wikipedia.org/wiki/Data_visualization)
+cluster_B_p12,cluster_B,"Point in cluster_B near (-2.95, 1.21)"
+cluster_B_p02,cluster_B,
+cluster_E_p09,cluster_E,[cluster_E](https://en.wikipedia.org/wiki/Data_visualization)
+cluster_D_p18,cluster_D,"Point in cluster_D near (3.50, -1.31)"
+cluster_D_p16,cluster_D,
+cluster_A_p09,cluster_A,[cluster_A](https://en.wikipedia.org/wiki/Cluster_analysis)
+cluster_B_p08,cluster_B,"Point in cluster_B near (-3.12, 0.57)"
+cluster_E_p04,cluster_E,
+cluster_C_p04,cluster_C,[cluster_C](https://en.wikipedia.org/wiki/UMAP)
+cluster_E_p19,cluster_E,"Point in cluster_E near (-1.99, -3.02)"
+cluster_B_p11,cluster_B,
+cluster_B_p15,cluster_B,[cluster_B](https://en.wikipedia.org/wiki/Dimensionality_reduction)
+cluster_C_p05,cluster_C,"Point in cluster_C near (-0.52, -3.56)"
+cluster_D_p13,cluster_D,
+cluster_A_p17,cluster_A,[cluster_A](https://en.wikipedia.org/wiki/Cluster_analysis)
+cluster_C_p10,cluster_C,"Point in cluster_C near (0.12, -4.56)"
+cluster_A_p03,cluster_A,
+cluster_A_p18,cluster_A,[cluster_A](https://en.wikipedia.org/wiki/Cluster_analysis)
+cluster_B_p14,cluster_B,"Point in cluster_B near (-3.08, 2.25)"
+cluster_A_p14,cluster_A,
+cluster_E_p07,cluster_E,[cluster_E](https://en.wikipedia.org/wiki/Data_visualization)
+cluster_D_p00,cluster_D,"Point in cluster_D near (3.71, -1.07)"
+cluster_E_p06,cluster_E,
+cluster_B_p09,cluster_B,[cluster_B](https://en.wikipedia.org/wiki/Dimensionality_reduction)
+cluster_D_p19,cluster_D,"Point in cluster_D near (4.13, -0.33)"
+cluster_A_p08,cluster_A,
+cluster_C_p16,cluster_C,[cluster_C](https://en.wikipedia.org/wiki/UMAP)
+cluster_C_p01,cluster_C,"Point in cluster_C near (1.08, -2.93)"
+cluster_C_p13,cluster_C,
+cluster_C_p06,cluster_C,[cluster_C](https://en.wikipedia.org/wiki/UMAP)
+cluster_A_p13,cluster_A,"Point in cluster_A near (3.07, 3.75)"
+cluster_A_p16,cluster_A,
+cluster_D_p06,cluster_D,[cluster_D](https://en.wikipedia.org/wiki/Machine_learning)
+cluster_E_p05,cluster_E,"Point in cluster_E near (-2.20, -3.09)"
+cluster_E_p02,cluster_E,
+cluster_E_p15,cluster_E,[cluster_E](https://en.wikipedia.org/wiki/Data_visualization)
+cluster_C_p02,cluster_C,"Point in cluster_C near (0.68, -1.57)"
+cluster_B_p06,cluster_B,
+cluster_A_p05,cluster_A,[cluster_A](https://en.wikipedia.org/wiki/Cluster_analysis)
+cluster_B_p19,cluster_B,"Point in cluster_B near (-2.98, 2.31)"
+cluster_A_p02,cluster_A,
+cluster_D_p08,cluster_D,[cluster_D](https://en.wikipedia.org/wiki/Machine_learning)
+cluster_D_p17,cluster_D,"Point in cluster_D near (4.13, -0.19)"
+cluster_C_p17,cluster_C,
+cluster_E_p03,cluster_E,[cluster_E](https://en.wikipedia.org/wiki/Data_visualization)
+cluster_D_p05,cluster_D,"Point in cluster_D near (4.57, -0.78)"
+cluster_B_p05,cluster_B,
+cluster_A_p15,cluster_A,[cluster_A](https://en.wikipedia.org/wiki/Cluster_analysis)
+cluster_C_p15,cluster_C,"Point in cluster_C near (0.47, -2.14)"
+cluster_C_p03,cluster_C,
+cluster_E_p00,cluster_E,[cluster_E](https://en.wikipedia.org/wiki/Data_visualization)
+cluster_B_p18,cluster_B,"Point in cluster_B near (-3.20, 1.55)"
+cluster_A_p04,cluster_A,
+cluster_B_p03,cluster_B,[cluster_B](https://en.wikipedia.org/wiki/Dimensionality_reduction)
+cluster_A_p10,cluster_A,"Point in cluster_A near (1.87, 2.63)"
+cluster_D_p10,cluster_D,
+cluster_B_p00,cluster_B,[cluster_B](https://en.wikipedia.org/wiki/Dimensionality_reduction)
+cluster_D_p04,cluster_D,"Point in cluster_D near (4.10, -1.18)"
+cluster_E_p13,cluster_E,
+cluster_A_p06,cluster_A,[cluster_A](https://en.wikipedia.org/wiki/Cluster_analysis)
+cluster_D_p12,cluster_D,"Point in cluster_D near (4.12, -0.49)"
+cluster_C_p00,cluster_C,
+cluster_D_p15,cluster_D,[cluster_D](https://en.wikipedia.org/wiki/Machine_learning)
+cluster_D_p09,cluster_D,"Point in cluster_D near (4.20, -0.79)"
+cluster_D_p14,cluster_D,
+cluster_E_p10,cluster_E,[cluster_E](https://en.wikipedia.org/wiki/Data_visualization)
+cluster_E_p12,cluster_E,"Point in cluster_E near (-2.43, -2.31)"
+cluster_B_p17,cluster_B,
+cluster_B_p04,cluster_B,[cluster_B](https://en.wikipedia.org/wiki/Dimensionality_reduction)
+cluster_A_p19,cluster_A,"Point in cluster_A near (1.71, 2.85)"
+cluster_E_p14,cluster_E,
+cluster_D_p11,cluster_D,[cluster_D](https://en.wikipedia.org/wiki/Machine_learning)
+cluster_C_p14,cluster_C,"Point in cluster_C near (1.34, -2.75)"
+cluster_B_p16,cluster_B,
+cluster_C_p18,cluster_C,[cluster_C](https://en.wikipedia.org/wiki/UMAP)
+cluster_B_p13,cluster_B,"Point in cluster_B near (-2.16, 1.67)"
+cluster_C_p09,cluster_C,
+cluster_A_p00,cluster_A,[cluster_A](https://en.wikipedia.org/wiki/Cluster_analysis)
+cluster_C_p08,cluster_C,"Point in cluster_C near (0.44, -2.51)"
+cluster_E_p18,cluster_E,
+cluster_A_p07,cluster_A,[cluster_A](https://en.wikipedia.org/wiki/Cluster_analysis)
+cluster_C_p11,cluster_C,"Point in cluster_C near (-0.10, -2.64)"
+cluster_B_p07,cluster_B,
+cluster_D_p01,cluster_D,[cluster_D](https://en.wikipedia.org/wiki/Machine_learning)
+cluster_D_p02,cluster_D,"Point in cluster_D near (3.31, 0.38)"
+cluster_C_p12,cluster_C,
+cluster_B_p01,cluster_B,[cluster_B](https://en.wikipedia.org/wiki/Dimensionality_reduction)
+cluster_B_p10,cluster_B,"Point in cluster_B near (-3.05, 1.44)"
+cluster_E_p16,cluster_E,
+cluster_A_p11,cluster_A,[cluster_A](https://en.wikipedia.org/wiki/Cluster_analysis)

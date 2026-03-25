@@ -878,6 +878,7 @@ impl UmapApp {
                     let sort_col = self.table_sort_col;
                     let sort_asc = self.table_sort_asc;
                     let selected_indices = &self.selected_indices;
+                    let has_info = self.cloud.info.iter().any(|s| !s.is_empty());
                     let cloud = &self.cloud;
                     let pinned_point = self.pinned_point;
 
@@ -923,7 +924,7 @@ impl UmapApp {
 
                     let avail_h = ui.available_height();
                     egui::ScrollArea::horizontal().show(ui, |ui| {
-                        TableBuilder::new(ui)
+                        let mut tb = TableBuilder::new(ui)
                             .striped(true)
                             .resizable(true)
                             .sense(egui::Sense::click())
@@ -935,8 +936,13 @@ impl UmapApp {
                             .column(Column::initial(140.0).range(60.0..=400.0))
                             .column(Column::initial(200.0).range(80.0..=f32::INFINITY))
                             .column(Column::initial(110.0).range(60.0..=200.0))
-                            .column(Column::initial(110.0).range(60.0..=200.0))
-                            .header(row_height, |mut header| {
+                            .column(Column::initial(110.0).range(60.0..=200.0));
+                        if has_info {
+                            tb = tb.column(
+                                Column::initial(220.0).range(80.0..=f32::INFINITY),
+                            );
+                        }
+                        tb.header(row_height, |mut header| {
                                 header.col(|_ui| {}); // pin column — no sort
                                 for (col, name) in [
                                     (SortCol::Row, "#"),
@@ -950,6 +956,9 @@ impl UmapApp {
                                             clicked_col = Some(col);
                                         }
                                     });
+                                }
+                                if has_info {
+                                    header.col(|ui| { ui.strong("Info"); });
                                 }
                             })
                             .body(|body| {
@@ -999,6 +1008,23 @@ impl UmapApp {
                                     row.col(|ui| {
                                         ui.monospace(format!("{:.6}", p.y));
                                     });
+                                    if has_info {
+                                        let info_str = cloud
+                                            .info
+                                            .get(idx)
+                                            .map(|s| s.as_str())
+                                            .unwrap_or("");
+                                        row.col(|ui| {
+                                            if !info_str.is_empty() {
+                                                let (text, url) = parse_info_link(info_str);
+                                                if let Some(url) = url {
+                                                    ui.hyperlink_to(text, url);
+                                                } else {
+                                                    ui.label(text);
+                                                }
+                                            }
+                                        });
+                                    }
                                     if row.response().clicked() {
                                         clicked_point = Some(idx);
                                     }
@@ -1579,6 +1605,21 @@ impl eframe::App for UmapApp {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/// Parse an optional Markdown-style link from an info string.
+/// Returns `(display_text, Some(url))` for `[text](url)`, or `(text, None)` for plain text.
+fn parse_info_link(s: &str) -> (&str, Option<&str>) {
+    if let Some(rest) = s.strip_prefix('[') {
+        if let Some(bracket_end) = rest.find("](") {
+            let text = &rest[..bracket_end];
+            let after = &rest[bracket_end + 2..];
+            if let Some(paren_end) = after.find(')') {
+                return (text, Some(&after[..paren_end]));
+            }
+        }
+    }
+    (s, None)
+}
 
 /// Paint `text` rotated 90° clockwise and centered within `rect`.
 /// Used for collapsed side-panel tabs.

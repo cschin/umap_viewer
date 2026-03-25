@@ -1,0 +1,4 @@
+coords_parquet: data/test/test_coords.parquet
+labels_parquet:
+  Test Labels: data/test/test_labels.parquet
+output_bin: data/test/points.bin
