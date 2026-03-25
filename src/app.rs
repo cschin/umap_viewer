@@ -106,6 +106,7 @@ pub struct UmapApp {
     focused_category: Option<String>,         // category highlighted via histogram click
     focus_size_scale: f32,                    // size multiplier for focused points
     category_histogram: Vec<(String, usize)>, // (category, count) sorted descending
+    pinned_point: Option<usize>,              // point index pinned by clicking a table row
     histogram_visible: bool,
     table_visible: bool,
     left_panel_visible: bool,
@@ -319,6 +320,7 @@ impl UmapApp {
             focused_category: None,
             focus_size_scale: 2.0,
             category_histogram: Vec::new(),
+            pinned_point: None,
             histogram_visible: true,
             table_visible: true,
             left_panel_visible: true,
@@ -502,6 +504,55 @@ impl UmapApp {
         self.upload_points(frame);
     }
 
+    fn shuffle_colors(&mut self, frame: &eframe::Frame) {
+        use rand::seq::SliceRandom;
+        let idx = self.selected_label_idx;
+        let cats = match self.all_label_categories.get(idx) {
+            Some(c) => c.clone(),
+            None => return,
+        };
+
+        // Collect unique category names in first-seen order.
+        let mut seen = std::collections::HashSet::new();
+        let mut unique: Vec<&str> = Vec::new();
+        for c in &cats {
+            if seen.insert(c.as_str()) {
+                unique.push(c.as_str());
+            }
+        }
+        let n = unique.len();
+        if n == 0 {
+            return;
+        }
+
+        // Shuffle hue indices and build a new ColorMap.
+        let mut hue_indices: Vec<usize> = (0..n).collect();
+        hue_indices.shuffle(&mut rand::thread_rng());
+        let new_cmap: crate::data::ColorMap = unique
+            .iter()
+            .zip(hue_indices.iter())
+            .map(|(&name, &hi)| {
+                (
+                    name.to_string(),
+                    crate::data::hue_to_rgb(hi as f32 / n as f32),
+                )
+            })
+            .collect();
+
+        // Persist the new map and re-apply colours to the cloud.
+        while self.color_maps.len() <= idx {
+            self.color_maps.push(crate::data::ColorMap::new());
+        }
+        self.color_maps[idx] = new_cmap.clone();
+        self.cloud.apply_categories(cats, &new_cmap);
+
+        if self.focused_category.is_some() {
+            self.apply_category_focus(frame);
+        } else {
+            self.upload_points(frame);
+        }
+    }
+
     fn upload_points(&self, frame: &eframe::Frame) {
         if let Some(wgpu_rs) = frame.wgpu_render_state() {
             let res_lock = wgpu_rs.renderer.read();
@@ -618,6 +669,14 @@ impl UmapApp {
                         self.pan = Vec2::ZERO;
                         self.zoom = 1.0;
                     }
+                    if ui
+                        .button("Shuffle colors")
+                        .on_hover_text("Randomly reassign category colors")
+                        .clicked()
+                    {
+                        self.shuffle_colors(frame);
+                        self.pinned_point = None;
+                    }
                     ui.add_space(8.0);
                     ui.separator();
 
@@ -661,6 +720,7 @@ impl UmapApp {
                         ];
                         self.selected_indices = self.cloud.apply_polygon_selection(&bbox);
                         self.focused_category = None;
+                        self.pinned_point = None;
                         self.category_histogram = self.build_category_histogram();
                         self.rebuild_sorted_rows();
                         self.upload_points(frame);
@@ -678,6 +738,7 @@ impl UmapApp {
                             self.upload_points(frame);
                             self.selected_indices.clear();
                             self.focused_category = None;
+                            self.pinned_point = None;
                             self.category_histogram.clear();
                             self.sorted_rows.clear();
                             self.poly_verts.clear();
@@ -761,8 +822,10 @@ impl UmapApp {
                     let selected_indices = &self.selected_indices;
                     let sorted_rows = &self.sorted_rows;
                     let cloud = &self.cloud;
+                    let pinned_point = self.pinned_point;
 
                     let mut clicked_col: Option<SortCol> = None;
+                    let mut clicked_point: Option<usize> = None;
 
                     let col_label = |name: &str, col: SortCol| -> String {
                         if sort_col == col {
@@ -782,6 +845,7 @@ impl UmapApp {
                             TableBuilder::new(ui)
                                 .striped(true)
                                 .resizable(true)
+                                .sense(egui::Sense::click())
                                 .min_scrolled_height(0.0)
                                 .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
                                 .column(Column::initial(60.0).range(40.0..=120.0))
@@ -810,6 +874,7 @@ impl UmapApp {
                                         let sel_idx = sorted_rows[row_idx];
                                         let idx = selected_indices[sel_idx];
                                         let p = &cloud.points[idx];
+                                        row.set_selected(pinned_point == Some(idx));
                                         let category = cloud
                                             .categories
                                             .get(idx)
@@ -839,6 +904,9 @@ impl UmapApp {
                                         row.col(|ui| {
                                             ui.monospace(format!("{:.6}", p.y));
                                         });
+                                        if row.response().clicked() {
+                                            clicked_point = Some(idx);
+                                        }
                                     });
                                 });
                         }); // ScrollArea::horizontal
@@ -852,6 +920,20 @@ impl UmapApp {
                             self.table_sort_asc = true;
                         }
                         self.rebuild_sorted_rows();
+                    }
+
+                    if let Some(idx) = clicked_point {
+                        // Toggle: clicking the same row again clears the pin.
+                        if self.pinned_point == Some(idx) {
+                            self.pinned_point = None;
+                        } else {
+                            self.pinned_point = Some(idx);
+                            // Pan so the pinned point lands at the canvas center.
+                            let p = &self.cloud.points[idx];
+                            let [xmin, xmax, ymin, ymax] = self.cloud.bounds;
+                            self.pan.x = p.x - (xmin + xmax) * 0.5;
+                            self.pan.y = p.y - (ymin + ymax) * 0.5;
+                        }
                     }
                 });
         }
@@ -1217,6 +1299,7 @@ impl UmapApp {
                                     self.selected_indices =
                                         self.cloud.apply_polygon_selection(&poly);
                                     self.focused_category = None;
+                                    self.pinned_point = None;
                                     self.category_histogram = self.build_category_histogram();
                                     self.rebuild_sorted_rows();
                                     self.upload_points(frame);
@@ -1298,6 +1381,37 @@ impl UmapApp {
                             (4.0, egui::Color32::from_rgb(255, 220, 50))
                         };
                         painter.circle_filled(sv, radius, color);
+                    }
+                }
+
+                // ---- pinned point ring ----
+                if let Some(pin_idx) = self.pinned_point {
+                    if let Some(p) = self.cloud.points.get(pin_idx) {
+                        let screen_pos = self.data_to_screen(p.x, p.y, rect);
+                        let painter = ui.painter();
+                        let radius = self.point_size * 3.0;
+                        // Outer bright ring
+                        painter.circle_stroke(
+                            screen_pos,
+                            radius,
+                            egui::Stroke::new(2.5, egui::Color32::from_rgb(255, 240, 60)),
+                        );
+                        // Small crosshair lines
+                        let arm = radius * 0.6;
+                        let c = egui::Color32::from_rgb(255, 240, 60);
+                        let s = egui::Stroke::new(1.5, c);
+                        painter.line_segment(
+                            [screen_pos - egui::vec2(arm + radius, 0.0),
+                             screen_pos - egui::vec2(radius, 0.0)], s);
+                        painter.line_segment(
+                            [screen_pos + egui::vec2(radius, 0.0),
+                             screen_pos + egui::vec2(arm + radius, 0.0)], s);
+                        painter.line_segment(
+                            [screen_pos - egui::vec2(0.0, arm + radius),
+                             screen_pos - egui::vec2(0.0, radius)], s);
+                        painter.line_segment(
+                            [screen_pos + egui::vec2(0.0, radius),
+                             screen_pos + egui::vec2(0.0, arm + radius)], s);
                     }
                 }
 

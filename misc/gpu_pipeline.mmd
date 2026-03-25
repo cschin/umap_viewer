@@ -1,0 +1,39 @@
+flowchart TD
+    subgraph STARTUP["Startup — once"]
+        A[PointCloud loaded\nfrom parquet / .bin] -->|points| B[PointRenderer::new]
+        B --> B1[quad_buf\n6 vertices · static square]
+        B --> B2[point_buf\nx y r g b highlight size\nper point]
+        B --> B3[uniform_buf\ntransform · size · aspect · alpha\n64 bytes]
+        B --> B4[RenderPipeline\nWGSL shader compiled\ninstanced draw configured]
+        B1 & B2 & B3 & B4 --> C[PointsCallbackResources\nstored in egui-wgpu\nCallbackResources map]
+    end
+
+    subgraph INTERACTION["On selection / highlight change"]
+        D[User draws polygon\nor clicks histogram] --> E[apply_category_focus\nor apply_polygon_selection]
+        E -->|update highlight and size fields| F[upload_points\nqueue.write_buffer to point_buf]
+    end
+
+    subgraph FRAME["Every frame"]
+        direction TB
+        G[show_canvas] --> G1[build_transform\npan · zoom · bounds\nreturns 4x4 matrix]
+        G1 --> G2[PointsCallback pushed\nto ui.painter]
+        G2 --> H{eframe flushes\negui shape list}
+        H -->|CallbackTrait prepare| I[queue.write_buffer\nto uniform_buf\ntransform · point_size\nviewport_aspect · alpha]
+        H -->|CallbackTrait paint| J[renderer.draw\nset_pipeline\nset_bind_group\nset_vertex_buffer 0 point_buf\nset_vertex_buffer 1 quad_buf\ndraw 0..6  0..N_points]
+    end
+
+    subgraph GPU["GPU pipeline — N_points instances x 6 vertices"]
+        direction LR
+        K["vs_main\n1. clip_center = transform x pos\n2. pixel_offset = quad_corner x size\n   corrected for aspect ratio\n3. uv = quad_corner x 2  range -1 to 1\n   passed to fragment stage"]
+        K --> L["fs_main\n1. dist = length of uv\n2. discard if dist gt 1.0  — circle clip\n3. smoothstep edge  — antialiasing\n4. ring band  — dark outline\n5. alpha x uniforms.alpha x highlight"]
+        L --> M[Framebuffer\nalpha-blended onto\negui UI layer]
+    end
+
+    C --> J
+    I --> GPU
+    J --> GPU
+
+    style STARTUP fill:#1a2a1a,stroke:#3a6a3a,color:#ccffcc
+    style INTERACTION fill:#1a1a2a,stroke:#3a3a6a,color:#ccccff
+    style FRAME fill:#2a1a1a,stroke:#6a3a3a,color:#ffcccc
+    style GPU fill:#2a2a1a,stroke:#6a6a3a,color:#ffffcc
