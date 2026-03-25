@@ -877,7 +877,7 @@ impl UmapApp {
                         ui.label("Search:");
                         let resp = ui.add(
                             egui::TextEdit::singleline(&mut self.label_search)
-                                .hint_text("filter by Label or ID…")
+                                .hint_text("filter by Label, ID, or Info…")
                                 .desired_width(f32::INFINITY),
                         );
                         if resp.changed() && self.label_search.is_empty() {
@@ -896,8 +896,8 @@ impl UmapApp {
                     let cloud = &self.cloud;
                     let pinned_point = self.pinned_point;
 
-                    // Build the filtered view: keep sorted_rows entries whose category
-                    // or label contains the search string (case-insensitive).
+                    // Build the filtered view: keep sorted_rows entries whose category,
+                    // label, or info contains the search string (case-insensitive).
                     let needle = self.label_search.to_lowercase();
                     let visible_rows: Vec<usize> = if needle.is_empty() {
                         self.sorted_rows.clone()
@@ -907,15 +907,12 @@ impl UmapApp {
                             .copied()
                             .filter(|&sel_idx| {
                                 let idx = selected_indices[sel_idx];
-                                let cat = cloud
-                                    .categories
-                                    .get(idx)
-                                    .map(|s| s.as_str())
-                                    .unwrap_or("");
-                                let lbl =
-                                    cloud.labels.get(idx).map(|s| s.as_str()).unwrap_or("");
+                                let cat = cloud.categories.get(idx).map(|s| s.as_str()).unwrap_or("");
+                                let lbl = cloud.labels.get(idx).map(|s| s.as_str()).unwrap_or("");
+                                let info = cloud.info.get(idx).map(|s| s.as_str()).unwrap_or("");
                                 cat.to_lowercase().contains(&needle)
                                     || lbl.to_lowercase().contains(&needle)
+                                    || info.to_lowercase().contains(&needle)
                             })
                             .collect()
                     };
