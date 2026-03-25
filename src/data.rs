@@ -612,12 +612,14 @@ impl PointCloud {
         // Accept two coord schemas:
         //   - Legacy: `coordinates` FixedSizeList<f32,2>  (original parquet files)
         //   - Flat:   separate `x` and `y` float columns  (csv_to_input_package output)
-        let coords_has_array: bool =
-            LazyFrame::scan_parquet(coords_path.into(), Default::default())
-                .ok()
-                .and_then(|mut lf| lf.collect_schema().ok())
-                .map(|s| s.get("coordinates").is_some())
-                .unwrap_or(false);
+        // Probe by trying to collect a 0-row frame with the array expression.
+        let coords_has_array: bool = LazyFrame::scan_parquet(coords_path.into(), Default::default())
+            .and_then(|lf| {
+                lf.select([col("coordinates")])
+                    .limit(0)
+                    .collect()
+            })
+            .is_ok();
 
         let coords = if coords_has_array {
             LazyFrame::scan_parquet(coords_path.into(), Default::default())?.select([
@@ -633,19 +635,9 @@ impl PointCloud {
             ])
         };
 
-        // Check whether the labels parquet has an optional `info` column.
-        let has_info: bool = LazyFrame::scan_parquet(labels_path.into(), Default::default())
-            .ok()
-            .and_then(|mut lf| lf.collect_schema().ok())
-            .map(|s| s.get("info").is_some())
-            .unwrap_or(false);
-
-        let mut labels_cols = vec![col("id"), col("labels")];
-        if has_info {
-            labels_cols.push(col("info"));
-        }
-        let labels_lf = LazyFrame::scan_parquet(labels_path.into(), Default::default())?
-            .select(labels_cols);
+        // Scan all label columns so optional ones (like `info`) are preserved.
+        // We resolve which columns exist from the joined result, not the schema.
+        let labels_lf = LazyFrame::scan_parquet(labels_path.into(), Default::default())?;
 
         let df = coords
             .join(
@@ -665,7 +657,8 @@ impl PointCloud {
         let cats_col = df.column("labels")?.str()?;
 
         // Collect info strings up front (before the point loop consumes other iterators).
-        let info_vec: Vec<String> = if has_info {
+        // Falls back to empty strings when the column is absent.
+        let info_vec: Vec<String> = if df.column("info").is_ok() {
             let ic = df.column("info")?.cast(&DataType::String)?;
             ic.str()?
                 .into_iter()

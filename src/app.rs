@@ -107,6 +107,7 @@ pub struct UmapApp {
     focus_size_scale: f32,                    // size multiplier for focused points
     category_histogram: Vec<(String, usize)>, // (category, count) sorted descending
     pinned_point: Option<usize>,              // point index pinned by clicking a table row
+    show_info_tooltip: bool,                  // show info column in hover tooltip
     histogram_visible: bool,
     table_visible: bool,
     left_panel_visible: bool,
@@ -323,6 +324,7 @@ impl UmapApp {
             focus_size_scale: 2.0,
             category_histogram: Vec::new(),
             pinned_point: None,
+            show_info_tooltip: false,
             histogram_visible: true,
             table_visible: true,
             left_panel_visible: true,
@@ -676,6 +678,13 @@ impl UmapApp {
                         self.apply_category_focus(frame);
                     }
                     ui.add_space(8.0);
+
+                    // Show info-tooltip toggle only when info data is present.
+                    if self.cloud.info.iter().any(|s| !s.is_empty()) {
+                        ui.checkbox(&mut self.show_info_tooltip, "Show info on hover")
+                            .on_hover_text("Display the info column in the point tooltip");
+                        ui.add_space(4.0);
+                    }
 
                     ui.label(format!("Zoom: {:.2}x", self.zoom));
                     if ui.button("Reset view").clicked() {
@@ -1551,12 +1560,29 @@ impl UmapApp {
                             .and_then(|i| self.cloud.labels.get(i))
                             .map(|s| s.as_str())
                             .unwrap_or("");
-                        let text = match (category.is_empty(), label.is_empty()) {
-                            (true, true) => format!("({:.4}, {:.4})", x, y),
-                            (false, true) => format!("label: {}\n({:.4}, {:.4})", category, x, y),
-                            (true, false) => format!("id: {}\n({:.4}, {:.4})", label, x, y),
-                            (false, false) => {
+                        let info_display = if self.show_info_tooltip {
+                            self.hovered_point
+                                .and_then(|i| self.cloud.info.get(i))
+                                .map(|s| {
+                                    let (text, _url) = parse_info_link(s.as_str());
+                                    text.to_string()
+                                })
+                                .filter(|s| !s.is_empty())
+                        } else {
+                            None
+                        };
+                        let text = match (category.is_empty(), label.is_empty(), &info_display) {
+                            (true, true, None) => format!("({:.4}, {:.4})", x, y),
+                            (false, true, None) => format!("label: {}\n({:.4}, {:.4})", category, x, y),
+                            (true, false, None) => format!("id: {}\n({:.4}, {:.4})", label, x, y),
+                            (false, false, None) => {
                                 format!("label: {}\nid: {}\n({:.4}, {:.4})", category, label, x, y)
+                            }
+                            (true, true, Some(info)) => format!("{}\n({:.4}, {:.4})", info, x, y),
+                            (false, true, Some(info)) => format!("label: {}\n{}\n({:.4}, {:.4})", category, info, x, y),
+                            (true, false, Some(info)) => format!("id: {}\n{}\n({:.4}, {:.4})", label, info, x, y),
+                            (false, false, Some(info)) => {
+                                format!("label: {}\nid: {}\n{}\n({:.4}, {:.4})", category, label, info, x, y)
                             }
                         };
                         let galley = painter.layout(
