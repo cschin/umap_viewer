@@ -110,10 +110,12 @@ pub struct UmapApp {
     histogram_visible: bool,
     table_visible: bool,
     left_panel_visible: bool,
-    // table sort state
+    // table sort / filter state
     table_sort_col: SortCol,
     table_sort_asc: bool,
     sorted_rows: Vec<usize>, // permutation of 0..selected_indices.len()
+    label_search: String,    // incremental filter for Label and ID columns
+    bottom_panel_height: f32, // user-controlled via drag handle; exact_height pins the panel
     // wgpu queue for point buffer uploads
     wgpu_queue: Arc<wgpu::Queue>,
     // label file selector
@@ -327,6 +329,8 @@ impl UmapApp {
             table_sort_col: SortCol::Row,
             table_sort_asc: true,
             sorted_rows: Vec::new(),
+            label_search: String::new(),
+            bottom_panel_height: 150.0,
             wgpu_queue,
             label_files: Vec::new(),
             all_label_categories: Vec::new(),
@@ -817,11 +821,31 @@ impl UmapApp {
 
         if !self.selected_indices.is_empty() && self.table_visible {
             egui::TopBottomPanel::bottom("selected_points")
-                .resizable(true)
-                .min_height(10.0)
-                .default_height(120.0)
-                .max_height(300.0)
+                .exact_height(self.bottom_panel_height)
                 .show(ctx, |ui| {
+                    // ---- drag handle ----
+                    let (handle_rect, handle_resp) = ui.allocate_exact_size(
+                        egui::vec2(ui.available_width(), 5.0),
+                        egui::Sense::drag(),
+                    );
+                    let handle_resp =
+                        handle_resp.on_hover_cursor(egui::CursorIcon::ResizeNorth);
+                    if handle_resp.dragged() {
+                        self.bottom_panel_height =
+                            (self.bottom_panel_height - handle_resp.drag_delta().y)
+                                .clamp(60.0, 500.0);
+                    }
+                    let stroke_w = if handle_resp.hovered() || handle_resp.dragged() {
+                        2.0
+                    } else {
+                        1.0
+                    };
+                    ui.painter().hline(
+                        handle_rect.left()..=handle_rect.right(),
+                        handle_rect.center().y,
+                        egui::Stroke::new(stroke_w, ui.visuals().widgets.noninteractive.bg_stroke.color),
+                    );
+
                     ui.horizontal(|ui| {
                         ui.strong(format!(
                             "Selected points ({}):",
@@ -834,14 +858,53 @@ impl UmapApp {
                         });
                     });
 
+                    // ---- incremental search box ----
+                    ui.horizontal(|ui| {
+                        ui.label("Search:");
+                        let resp = ui.add(
+                            egui::TextEdit::singleline(&mut self.label_search)
+                                .hint_text("filter by Label or ID…")
+                                .desired_width(f32::INFINITY),
+                        );
+                        if resp.changed() && self.label_search.is_empty() {
+                            // nothing extra needed — filter re-evaluates every frame
+                        }
+                        if ui.small_button("✕").on_hover_text("Clear search").clicked() {
+                            self.label_search.clear();
+                        }
+                    });
+
                     let row_height = ui.text_style_height(&egui::TextStyle::Monospace) + 4.0;
-                    let total = self.sorted_rows.len();
                     let sort_col = self.table_sort_col;
                     let sort_asc = self.table_sort_asc;
                     let selected_indices = &self.selected_indices;
-                    let sorted_rows = &self.sorted_rows;
                     let cloud = &self.cloud;
                     let pinned_point = self.pinned_point;
+
+                    // Build the filtered view: keep sorted_rows entries whose category
+                    // or label contains the search string (case-insensitive).
+                    let needle = self.label_search.to_lowercase();
+                    let visible_rows: Vec<usize> = if needle.is_empty() {
+                        self.sorted_rows.clone()
+                    } else {
+                        self.sorted_rows
+                            .iter()
+                            .copied()
+                            .filter(|&sel_idx| {
+                                let idx = selected_indices[sel_idx];
+                                let cat = cloud
+                                    .categories
+                                    .get(idx)
+                                    .map(|s| s.as_str())
+                                    .unwrap_or("");
+                                let lbl =
+                                    cloud.labels.get(idx).map(|s| s.as_str()).unwrap_or("");
+                                cat.to_lowercase().contains(&needle)
+                                    || lbl.to_lowercase().contains(&needle)
+                            })
+                            .collect()
+                    };
+                    let total = visible_rows.len();
 
                     let mut clicked_col: Option<SortCol> = None;
                     let mut clicked_point: Option<usize> = None;
@@ -858,78 +921,90 @@ impl UmapApp {
                         }
                     };
 
-                    let avail = ui.available_size();
-                    ui.allocate_ui(avail, |ui| {
-                        egui::ScrollArea::horizontal().show(ui, |ui| {
-                            TableBuilder::new(ui)
-                                .striped(true)
-                                .resizable(true)
-                                .sense(egui::Sense::click())
-                                .min_scrolled_height(0.0)
-                                .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
-                                .column(Column::initial(60.0).range(40.0..=120.0))
-                                .column(Column::initial(140.0).range(60.0..=400.0))
-                                .column(Column::initial(200.0).range(80.0..=f32::INFINITY))
-                                .column(Column::initial(110.0).range(60.0..=200.0))
-                                .column(Column::initial(110.0).range(60.0..=200.0))
-                                .header(row_height, |mut header| {
-                                    for (col, name) in [
-                                        (SortCol::Row, "#"),
-                                        (SortCol::Category, "Label"),
-                                        (SortCol::Label, "ID"),
-                                        (SortCol::X, "X"),
-                                        (SortCol::Y, "Y"),
-                                    ] {
-                                        header.col(|ui| {
-                                            if ui.button(col_label(name, col)).clicked() {
-                                                clicked_col = Some(col);
-                                            }
-                                        });
-                                    }
-                                })
-                                .body(|body| {
-                                    body.rows(row_height, total, |mut row| {
-                                        let row_idx = row.index();
-                                        let sel_idx = sorted_rows[row_idx];
-                                        let idx = selected_indices[sel_idx];
-                                        let p = &cloud.points[idx];
-                                        row.set_selected(pinned_point == Some(idx));
-                                        let category = cloud
-                                            .categories
-                                            .get(idx)
-                                            .map(|s| s.as_str())
-                                            .unwrap_or("");
-                                        let label =
-                                            cloud.labels.get(idx).map(|s| s.as_str()).unwrap_or("");
-                                        let category_display = if category.is_empty() {
-                                            "(unlabeled)"
-                                        } else {
-                                            category
-                                        };
-                                        let label_display =
-                                            if label.is_empty() { "(no id)" } else { label };
-                                        row.col(|ui| {
-                                            ui.monospace(format!("{}", sel_idx + 1));
-                                        });
-                                        row.col(|ui| {
-                                            ui.label(category_display);
-                                        });
-                                        row.col(|ui| {
-                                            ui.label(label_display);
-                                        });
-                                        row.col(|ui| {
-                                            ui.monospace(format!("{:.6}", p.x));
-                                        });
-                                        row.col(|ui| {
-                                            ui.monospace(format!("{:.6}", p.y));
-                                        });
-                                        if row.response().clicked() {
+                    let avail_h = ui.available_height();
+                    egui::ScrollArea::horizontal().show(ui, |ui| {
+                        TableBuilder::new(ui)
+                            .striped(true)
+                            .resizable(true)
+                            .sense(egui::Sense::click())
+                            .min_scrolled_height(0.0)
+                            .max_scroll_height(avail_h)
+                            .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
+                            .column(Column::exact(24.0)) // pin icon
+                            .column(Column::initial(60.0).range(40.0..=120.0))
+                            .column(Column::initial(140.0).range(60.0..=400.0))
+                            .column(Column::initial(200.0).range(80.0..=f32::INFINITY))
+                            .column(Column::initial(110.0).range(60.0..=200.0))
+                            .column(Column::initial(110.0).range(60.0..=200.0))
+                            .header(row_height, |mut header| {
+                                header.col(|_ui| {}); // pin column — no sort
+                                for (col, name) in [
+                                    (SortCol::Row, "#"),
+                                    (SortCol::Category, "Label"),
+                                    (SortCol::Label, "ID"),
+                                    (SortCol::X, "X"),
+                                    (SortCol::Y, "Y"),
+                                ] {
+                                    header.col(|ui| {
+                                        if ui.button(col_label(name, col)).clicked() {
+                                            clicked_col = Some(col);
+                                        }
+                                    });
+                                }
+                            })
+                            .body(|body| {
+                                body.rows(row_height, total, |mut row| {
+                                    let row_idx = row.index();
+                                    let sel_idx = visible_rows[row_idx];
+                                    let idx = selected_indices[sel_idx];
+                                    let p = &cloud.points[idx];
+                                    let is_pinned = pinned_point == Some(idx);
+                                    row.set_selected(is_pinned);
+                                    let category = cloud
+                                        .categories
+                                        .get(idx)
+                                        .map(|s| s.as_str())
+                                        .unwrap_or("");
+                                    let label = cloud
+                                        .labels
+                                        .get(idx)
+                                        .map(|s| s.as_str())
+                                        .unwrap_or("");
+                                    let category_display = if category.is_empty() {
+                                        "(unlabeled)"
+                                    } else {
+                                        category
+                                    };
+                                    let label_display =
+                                        if label.is_empty() { "(no id)" } else { label };
+                                    row.col(|ui| {
+                                        let icon = if is_pinned { "●" } else { "○" };
+                                        let tip = if is_pinned { "Unpin" } else { "Pin" };
+                                        if ui.small_button(icon).on_hover_text(tip).clicked() {
                                             clicked_point = Some(idx);
                                         }
                                     });
+                                    row.col(|ui| {
+                                        ui.monospace(format!("{}", sel_idx + 1));
+                                    });
+                                    row.col(|ui| {
+                                        ui.label(category_display);
+                                    });
+                                    row.col(|ui| {
+                                        ui.label(label_display);
+                                    });
+                                    row.col(|ui| {
+                                        ui.monospace(format!("{:.6}", p.x));
+                                    });
+                                    row.col(|ui| {
+                                        ui.monospace(format!("{:.6}", p.y));
+                                    });
+                                    if row.response().clicked() {
+                                        clicked_point = Some(idx);
+                                    }
                                 });
-                        }); // ScrollArea::horizontal
-                    }); // allocate_ui
+                            });
+                    }); // ScrollArea::horizontal
 
                     if let Some(col) = clicked_col {
                         if self.table_sort_col == col {
