@@ -82,6 +82,32 @@ impl Config {
     /// and load it.
     pub fn from_args() -> Result<Self, Box<dyn std::error::Error>> {
         let args: Vec<String> = std::env::args().collect();
+
+        if args.iter().any(|a| a == "--help" || a == "-h") {
+            let bin = args.first().map(|s| s.as_str()).unwrap_or("umap_viewer");
+            println!(
+                "Usage: {bin} [OPTIONS]
+
+Options:
+  --config <path>   Path to the YAML config file (default: config.yaml)
+  --export-bin      Export data as points.bin for the WASM build, then exit
+  -h, --help        Show this help message and exit
+
+Config file (YAML):
+  coords_parquet    Path to the parquet file with UMAP coordinates
+  labels_parquet    Path(s) to parquet file(s) with point labels
+  output_bin        Output path for --export-bin (default: data/points.bin)
+
+WASM build:
+  The WASM version embeds data at compile time — it does not accept runtime
+  arguments.  To update WASM data:
+    1. Run with --export-bin to write points.bin from the desired config
+    2. Rebuild with: ./webapp_build.sh
+"
+            );
+            std::process::exit(0);
+        }
+
         let path = args
             .windows(2)
             .find(|w| w[0] == "--config")
