@@ -553,6 +553,24 @@ impl UmapApp {
         }
     }
 
+    /// Pan so the centroid of the current selection lands at the canvas centre.
+    fn center_on_selected(&mut self) {
+        if self.selected_indices.is_empty() {
+            return;
+        }
+        let [xmin, xmax, ymin, ymax] = self.cloud.bounds;
+        let (sx, sy) = self
+            .selected_indices
+            .iter()
+            .fold((0.0f32, 0.0f32), |acc, &i| {
+                let p = &self.cloud.points[i];
+                (acc.0 + p.x, acc.1 + p.y)
+            });
+        let n = self.selected_indices.len() as f32;
+        self.pan.x = sx / n - (xmin + xmax) * 0.5;
+        self.pan.y = sy / n - (ymin + ymax) * 0.5;
+    }
+
     fn upload_points(&self, frame: &eframe::Frame) {
         if let Some(wgpu_rs) = frame.wgpu_render_state() {
             let res_lock = wgpu_rs.renderer.read();
@@ -724,6 +742,7 @@ impl UmapApp {
                         self.category_histogram = self.build_category_histogram();
                         self.rebuild_sorted_rows();
                         self.upload_points(frame);
+                        self.center_on_selected();
                         self.poly_verts = bbox;
                         self.poly_closed = true;
                         self.mode = Mode::Navigate;
@@ -1303,6 +1322,7 @@ impl UmapApp {
                                     self.category_histogram = self.build_category_histogram();
                                     self.rebuild_sorted_rows();
                                     self.upload_points(frame);
+                                    self.center_on_selected();
                                     self.poly_closed = true;
                                     self.mode = Mode::Navigate;
                                 } else {
@@ -1464,6 +1484,7 @@ impl eframe::App for UmapApp {
     fn update(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
         self.show_left_panel(ctx, frame);
         self.show_bottom_panel(ctx);
+        let histogram_was_visible = self.histogram_visible;
         if let Some(cat) = self.show_histogram_panel(ctx) {
             if self.focused_category.as_deref() == Some(cat.as_str()) {
                 self.focused_category = None;
@@ -1471,6 +1492,10 @@ impl eframe::App for UmapApp {
                 self.focused_category = Some(cat);
             }
             self.apply_category_focus(frame);
+            self.center_on_selected();
+        }
+        if !histogram_was_visible && self.histogram_visible {
+            self.center_on_selected();
         }
         self.show_canvas(ctx, frame);
     }
