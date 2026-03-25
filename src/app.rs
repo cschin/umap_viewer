@@ -1605,6 +1605,7 @@ impl UmapApp {
                     let area_resp = egui::Area::new(egui::Id::new("sticky_popup"))
                         .fixed_pos(pos)
                         .order(egui::Order::Tooltip)
+                        .constrain_to(rect)
                         .show(ui.ctx(), |ui| {
                             egui::Frame::popup(ui.style()).show(ui, |ui| {
                                 ui.set_max_width(300.0);
@@ -1629,21 +1630,48 @@ impl UmapApp {
                                 ui.monospace(format!("({:.4}, {:.4})", px, py));
                             });
                         });
-                    // Draw a callout triangle on the left edge pointing toward the point.
+                    // Draw a callout triangle on whichever popup edge faces the point.
+                    // This adapts automatically when constrain_to() shifts the popup.
                     let popup_rect = area_resp.response.rect;
-                    let anchor_y = point_screen.y
-                        .clamp(popup_rect.top() + 8.0, popup_rect.bottom() - 8.0);
-                    let tip = egui::pos2(popup_rect.left() - 8.0, anchor_y);
-                    let base_top = egui::pos2(popup_rect.left(), anchor_y - 6.0);
-                    let base_bot = egui::pos2(popup_rect.left(), anchor_y + 6.0);
                     let fill = ui.visuals().window_fill();
                     let stroke = ui.visuals().window_stroke();
                     let popup_painter = ui.ctx().layer_painter(area_resp.response.layer_id);
+                    let center = popup_rect.center();
+                    let dx = point_screen.x - center.x;
+                    let dy = point_screen.y - center.y;
+                    let (tip, base_a, base_b) = if dx.abs() >= dy.abs() {
+                        if dx < 0.0 {
+                            // point is to the left
+                            let ay = point_screen.y.clamp(popup_rect.top() + 8.0, popup_rect.bottom() - 8.0);
+                            (egui::pos2(popup_rect.left() - 8.0, ay),
+                             egui::pos2(popup_rect.left(), ay - 6.0),
+                             egui::pos2(popup_rect.left(), ay + 6.0))
+                        } else {
+                            // point is to the right
+                            let ay = point_screen.y.clamp(popup_rect.top() + 8.0, popup_rect.bottom() - 8.0);
+                            (egui::pos2(popup_rect.right() + 8.0, ay),
+                             egui::pos2(popup_rect.right(), ay - 6.0),
+                             egui::pos2(popup_rect.right(), ay + 6.0))
+                        }
+                    } else if dy < 0.0 {
+                        // point is above
+                        let ax = point_screen.x.clamp(popup_rect.left() + 8.0, popup_rect.right() - 8.0);
+                        (egui::pos2(ax, popup_rect.top() - 8.0),
+                         egui::pos2(ax - 6.0, popup_rect.top()),
+                         egui::pos2(ax + 6.0, popup_rect.top()))
+                    } else {
+                        // point is below
+                        let ax = point_screen.x.clamp(popup_rect.left() + 8.0, popup_rect.right() - 8.0);
+                        (egui::pos2(ax, popup_rect.bottom() + 8.0),
+                         egui::pos2(ax - 6.0, popup_rect.bottom()),
+                         egui::pos2(ax + 6.0, popup_rect.bottom()))
+                    };
+                    // Fill without base stroke so it blends with the popup border,
+                    // then draw only the two exposed edges.
                     popup_painter.add(egui::Shape::convex_polygon(
-                        vec![tip, base_top, base_bot],
-                        fill,
-                        stroke,
-                    ));
+                        vec![tip, base_a, base_b], fill, egui::Stroke::NONE));
+                    popup_painter.line_segment([tip, base_a], stroke);
+                    popup_painter.line_segment([tip, base_b], stroke);
                 }
                 if close_sticky {
                     self.sticky_hover_point = None;
