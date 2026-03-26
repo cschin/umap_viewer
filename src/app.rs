@@ -1707,7 +1707,7 @@ impl UmapApp {
                     if let Some(p) = self.cloud.points.get(pin_idx) {
                         let screen_pos = self.data_to_screen(p.x, p.y, rect);
                         let painter = ui.painter();
-                        let radius = self.point_size * 3.0;
+                        let radius = self.point_size * 1.8;
                         // Outer bright ring
                         painter.circle_stroke(
                             screen_pos,
