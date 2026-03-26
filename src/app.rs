@@ -334,28 +334,35 @@ impl UmapApp {
         app
     }
 
-    /// WASM constructor: load data from the embedded binary blob.
+    /// WASM constructor: load embedded binary blob if compiled in, otherwise start empty.
     #[cfg(target_arch = "wasm32")]
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        let cloud = PointCloud::from_bin(include_bytes!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/data/points.bin"
-        )))
-        .expect("failed to parse embedded points.bin");
+        #[cfg(has_embedded_bin)]
+        {
+            let cloud = PointCloud::from_bin(include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/data/points.bin"
+            )))
+            .expect("failed to parse embedded points.bin");
 
-        let label_files = cloud
-            .label_set_names
-            .iter()
-            .map(|n| (n.clone(), String::new()))
-            .collect();
-        let all_label_categories = cloud.all_categories.clone();
-        let color_maps = cloud.category_color_maps.clone();
+            let label_files = cloud.label_set_names.iter()
+                .map(|n| (n.clone(), String::new())).collect();
+            let all_label_categories = cloud.all_categories.clone();
+            let color_maps = cloud.category_color_maps.clone();
 
-        let mut app = Self::build(cc, cloud);
-        app.label_files = label_files;
-        app.all_label_categories = all_label_categories;
-        app.color_maps = color_maps;
-        app
+            let mut app = Self::build(cc, cloud);
+            app.label_files = label_files;
+            app.all_label_categories = all_label_categories;
+            app.color_maps = color_maps;
+            app
+        }
+        #[cfg(not(has_embedded_bin))]
+        Self::new_empty(cc)
+    }
+
+    /// Start with no data — the canvas shows an upload prompt.
+    pub fn new_empty(cc: &eframe::CreationContext<'_>) -> Self {
+        Self::build(cc, PointCloud::empty())
     }
 
     /// Build a fresh `UmapApp` with all fields at their default/initial values.
@@ -1604,6 +1611,35 @@ impl UmapApp {
                         alpha: self.alpha,
                     },
                 ));
+
+                // ---- empty-state welcome message ----
+                if self.cloud.points.is_empty() {
+                    let painter = ui.painter_at(rect);
+                    let center = rect.center();
+                    // Dim background overlay
+                    painter.rect_filled(rect, 0.0, egui::Color32::from_rgba_premultiplied(0, 0, 0, 80));
+                    // Message box
+                    let text1 = "No data loaded";
+                    let text2 = "Use \"Load CSV…\" in the left panel to load your data.";
+                    let galley1 = ui.fonts(|f| f.layout_no_wrap(
+                        text1.to_string(),
+                        egui::FontId::proportional(22.0),
+                        egui::Color32::WHITE,
+                    ));
+                    let galley2 = ui.fonts(|f| f.layout(
+                        text2.to_string(),
+                        egui::FontId::proportional(14.0),
+                        egui::Color32::from_gray(200),
+                        rect.width() * 0.6,
+                    ));
+                    let h1 = galley1.size().y;
+                    let h2 = galley2.size().y;
+                    let gap = 8.0;
+                    let total = h1 + gap + h2;
+                    let top = center.y - total * 0.5;
+                    painter.galley(egui::pos2(center.x - galley1.size().x * 0.5, top), galley1, egui::Color32::WHITE);
+                    painter.galley(egui::pos2(center.x - galley2.size().x * 0.5, top + h1 + gap), galley2, egui::Color32::from_gray(200));
+                }
 
                 // ---- polygon overlay ----
                 if !self.poly_verts.is_empty() {

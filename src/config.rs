@@ -80,7 +80,13 @@ impl Config {
 
     /// Resolve the config file path from args (`--config <path>`, default `config.yaml`)
     /// and load it.
-    pub fn from_args() -> Result<Self, Box<dyn std::error::Error>> {
+    ///
+    /// Returns:
+    ///   `Ok(Some(cfg))` — config found and loaded.
+    ///   `Ok(None)`      — no `--config` flag given and `config.yaml` does not exist;
+    ///                     the caller should start with an empty dataset.
+    ///   `Err(e)`        — `--config <path>` was given explicitly but failed to load.
+    pub fn from_args() -> Result<Option<Self>, Box<dyn std::error::Error>> {
         let args: Vec<String> = std::env::args().collect();
 
         if args.iter().any(|a| a == "--help" || a == "-h") {
@@ -98,9 +104,15 @@ Config file (YAML):
   labels_parquet    Path(s) to parquet file(s) with point labels
   output_bin        Output path for --export-bin (default: data/points.bin)
 
+Starting without a config:
+  If no config file is found the viewer starts with an empty canvas.
+  Use the \"Load CSV\" button to load a joined CSV file
+  (columns: id, x, y, labels[, info][, labels_*]).
+
 WASM build:
-  The WASM version embeds data at compile time — it does not accept runtime
-  arguments.  To update WASM data:
+  The WASM version can embed data at compile time via data/points.bin.
+  Without that file it starts empty — use \"Load CSV\" in the browser.
+  To build with embedded data:
     1. Run with --export-bin to write points.bin from the desired config
     2. Rebuild with: ./webapp_build.sh
 "
@@ -108,14 +120,17 @@ WASM build:
             std::process::exit(0);
         }
 
-        let path = args
-            .windows(2)
-            .find(|w| w[0] == "--config")
-            .map(|w| w[1].as_str())
-            .unwrap_or("config.yaml");
+        let explicit = args.windows(2).find(|w| w[0] == "--config").map(|w| w[1].clone());
+        let path = explicit.as_deref().unwrap_or("config.yaml");
+
+        // If no explicit path was given and the default doesn't exist, start empty.
+        if explicit.is_none() && !std::path::Path::new(path).exists() {
+            return Ok(None);
+        }
+
         let mut cfg = Self::from_file(path)?;
         cfg.export_bin = args.contains(&"--export-bin".to_string());
-        Ok(cfg)
+        Ok(Some(cfg))
     }
 
     /// Ordered list of `(display_name, path)` pairs for all label files.

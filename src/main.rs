@@ -45,31 +45,37 @@ fn main() {
 fn main() -> eframe::Result<()> {
     env_logger::init();
 
-    let config = umap_viewer::config::Config::from_args()
-        .expect("failed to load config (use --config <path>, default: config.yaml)");
-
-    // Verify primary data files exist before launching the GUI.
-    let primary_labels = config.primary_labels_path().to_string();
-    for path in [&config.coords_parquet, &primary_labels] {
-        if !std::path::Path::new(path).exists() {
-            eprintln!("error: data file not found: {path}");
-            eprintln!("hint: check the paths in config.yaml or use --config <path>");
+    let maybe_config = umap_viewer::config::Config::from_args()
+        .unwrap_or_else(|e| {
+            eprintln!("error loading config: {e}");
+            eprintln!("hint: use --config <path> or place a config.yaml in the current directory");
             std::process::exit(1);
-        }
-    }
+        });
 
-    // --export-bin: write points.bin (with all label sets) for the WASM build, then exit.
-    if config.export_bin {
-        let coords = config.coords_parquet.clone();
-        let out_bin = config.output_bin.clone();
-        let pairs = config.label_pairs();
-        let color_files: Vec<Option<String>> = pairs
-            .iter()
-            .map(|(name, _)| config.color_file_for(name).map(|s| s.to_string()))
-            .collect();
-        umap_viewer::data::PointCloud::export_to_bin(&coords, &pairs, &color_files, &out_bin)
-            .expect("export failed");
-        return Ok(());
+    if let Some(ref config) = maybe_config {
+        // Verify primary data files exist before launching the GUI.
+        let primary_labels = config.primary_labels_path().to_string();
+        for path in [&config.coords_parquet, &primary_labels] {
+            if !std::path::Path::new(path).exists() {
+                eprintln!("error: data file not found: {path}");
+                eprintln!("hint: check the paths in config.yaml or use --config <path>");
+                std::process::exit(1);
+            }
+        }
+
+        // --export-bin: write points.bin for the WASM build, then exit.
+        if config.export_bin {
+            let coords = config.coords_parquet.clone();
+            let out_bin = config.output_bin.clone();
+            let pairs = config.label_pairs();
+            let color_files: Vec<Option<String>> = pairs
+                .iter()
+                .map(|(name, _)| config.color_file_for(name).map(|s| s.to_string()))
+                .collect();
+            umap_viewer::data::PointCloud::export_to_bin(&coords, &pairs, &color_files, &out_bin)
+                .expect("export failed");
+            return Ok(());
+        }
     }
 
     let native_options = eframe::NativeOptions {
@@ -83,6 +89,9 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "UMAP Viewer",
         native_options,
-        Box::new(move |cc| Ok(Box::new(UmapApp::with_config(cc, &config)))),
+        Box::new(move |cc| match maybe_config {
+            Some(ref config) => Ok(Box::new(UmapApp::with_config(cc, config))),
+            None => Ok(Box::new(UmapApp::new_empty(cc))),
+        }),
     )
 }

@@ -110,6 +110,24 @@ pub struct PointCloud {
 }
 
 impl PointCloud {
+    /// An empty cloud with no points. Used as the initial state when no data file
+    /// is provided at startup.
+    pub fn empty() -> Self {
+        let bounds = [-1.0_f32, 1.0, -1.0, 1.0];
+        let grid = SpatialGrid::build(&[], bounds);
+        Self {
+            points: Vec::new(),
+            bounds,
+            grid,
+            labels: Vec::new(),
+            categories: Vec::new(),
+            info: Vec::new(),
+            label_set_names: Vec::new(),
+            all_categories: Vec::new(),
+            category_color_maps: Vec::new(),
+        }
+    }
+
     /// Generate 500k synthetic UMAP-like points: Gaussian clusters at random centers.
     pub fn generate_test(n_points: usize, n_clusters: usize) -> Self {
         let mut rng = rand::thread_rng();
