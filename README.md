@@ -1,6 +1,6 @@
-# UMAP Viewer
+# LatentAnalyzer
 
-An interactive GPU-accelerated viewer for [UMAP](https://umap-learn.readthedocs.io/) 2D embeddings. Supports hundreds of thousands of points with smooth pan/zoom, polygon selection, category filtering, and a sortable data table. Runs as a native desktop app or in the browser via WebAssembly.
+An interactive GPU-accelerated viewer for 2D latent-space embeddings (UMAP, t-SNE, PCA, etc.). Supports hundreds of thousands of points with smooth pan/zoom, polygon selection, category filtering, a sticky tooltip with clickable links, and a sortable data table. Runs as a native desktop app or in the browser via WebAssembly.
 
 ## 🚀 [Try the live demo](https://cschin.github.io/umap_viewer/)
 
@@ -17,16 +17,21 @@ No install required — runs entirely in your browser via WebAssembly. The demo 
 - **GPU rendering** — instanced quad rendering via wgpu; antialiased circles; handles 500k+ points at interactive frame rates
 - **Pan / zoom** — drag to pan, scroll wheel to zoom (0.05× – 500×)
 - **Polygon selection** — click to place vertices, close near the start to select; right-click to cancel
-- **Multiple label sets** — load several label/category parquet files and switch between them instantly from the left panel; colours update live on both native and WASM builds
+- **Multiple label sets** — load several label/category files and switch between them instantly; colours update live
 - **Custom colours** — optional per-label-set colour CSV files (`label,#RRGGBB`); unspecified labels fall back to evenly-spaced hues
-- **Unlabeled point styling** — points with no assigned label are rendered in mid-gray and at 50% opacity relative to labelled points, making the labelled structure stand out without hiding the unlabelled data; the histogram bar for `(unlabeled)` uses the same gray
-- **Category histogram** — right panel shows the distribution of selected points across categories, bars coloured to match the scatter plot; click a category label to highlight only that category's points at 2× size (click again to deselect); points with no label appear as `(unlabeled)`; panel is collapsible via the **▶** button and re-opens from a labeled tab on the right edge
-- **Sortable table** — bottom panel lists selected points with sortable columns: `#`, `Label`, `ID`, `X`, `Y`; points with no label show `(unlabeled)` and points with no ID show `(no id)`; panel is collapsible via the **▼** button and re-opens from a tab at the bottom edge
-- **Collapsible control panel** — the left controls panel collapses to a narrow **▲ Controls** tab to maximise canvas space; click the tab or the **◀** button to toggle
-- **Export selected IDs** — save the IDs of all selected points to a text file (one ID per line); native build opens a save dialog defaulting to `~/Downloads`; WASM build triggers a browser download
-- **Hover tooltip** — shows `label: <category>`, `id: <point id>`, and cursor data coordinates for the nearest point
-- **Touch / mobile support** *(WASM build)* — pinch to zoom toward the pinch centroid; two-finger drag to pan; single-finger drag to pan in navigate mode
-- **Dual target** — identical code base builds for macOS / Linux / Windows (native) and the browser (WASM / WebGL2)
+- **Unlabeled point styling** — points with no assigned label rendered in mid-gray at 50% opacity; histogram bar matches
+- **Category histogram** — right panel shows distribution of selected points; click a category to highlight it at 2× size; collapsible
+- **Sortable table** — bottom panel lists selected points with sortable columns; collapsible
+- **Sticky tooltip with links** — hover over a point to see its label, ID, and info. Click the point to **pin** the tooltip. The pinned tooltip tracks the point as you pan/zoom, stays within the canvas, and shows a callout triangle pointing toward the point. If the `info` field contains a `[text](url)` markdown link it is rendered as a clickable hyperlink. Close with **✕** or by clicking empty canvas
+- **Info search** — the search box in the bottom panel filters by content in the `info` column as well as label and ID
+- **Go to selected / Clear focus** — buttons in the bottom panel scroll back to the pinned row or remove category focus without losing the selection
+- **Direct CSV loading** — load a joined CSV with no intermediate conversion steps. Accepted formats: `.csv`, `.csv.gz` (gzip), `.zip` (first `.csv` entry). Works on native and WASM
+- **CSV format help** — click the **?** button next to "Load CSV…" for a description of required columns and an example row
+- **Inline load errors** — if a CSV fails to parse, a red error message appears in the left panel with a Dismiss button; the app never crashes
+- **Empty-state welcome** — when no data is loaded the canvas shows a prompt to use Load CSV…
+- **Export selected IDs** — save the IDs of all selected points to a text file; native opens a save dialog; WASM triggers a browser download
+- **Collapsible control panel** — collapses to a narrow tab to maximise canvas space
+- **Touch / mobile support** *(WASM)* — pinch to zoom, two-finger drag to pan
 
 ---
 
@@ -38,7 +43,7 @@ umap_viewer/
 │   ├── main.rs            # Entry points: native CLI + WASM init
 │   ├── lib.rs             # Module re-exports
 │   ├── config.rs          # config.yaml loader (native only)
-│   ├── data.rs            # PointCloud, SpatialGrid, parquet & binary I/O, ColorMap
+│   ├── data.rs            # PointCloud, SpatialGrid, parquet/binary/CSV I/O, ColorMap
 │   ├── app.rs             # egui application: UI panels, interaction, rendering
 │   ├── point_renderer.rs  # wgpu pipeline, vertex buffers, uniforms
 │   └── shaders/
@@ -46,26 +51,22 @@ umap_viewer/
 ├── fonts/
 │   └── .gitkeep           # placeholder — SFNSMono.ttf not tracked (see Prerequisites)
 ├── data/
-│   ├── arxiv_ml_data_map.parquet          # example: arXiv ML paper coordinates
-│   ├── arxiv_ml_layer0_cluster_labels.parquet  # example: cluster labels layer 0
-│   ├── arxiv_ml_layer1_cluster_labels.parquet  # example: cluster labels layer 1
-│   ├── arxiv_ml_layer2_cluster_labels.parquet  # example: cluster labels layer 2
-│   ├── arxiv_ml_layer3_cluster_labels.parquet  # example: cluster labels layer 3
-│   ├── arxiv_ml_layer4_cluster_labels.parquet  # example: cluster labels layer 4
-│   ├── cluster_colors.csv                 # custom colours for the example dataset
-│   └── points.bin                         # pre-serialised binary blob for WASM (generated by --export-bin)
+│   ├── arxiv_ml_data_map.parquet
+│   ├── arxiv_ml_layer[0-4]_cluster_labels.parquet
+│   ├── cluster_colors.csv
+│   └── points.bin                         # pre-serialised binary for WASM (--export-bin)
+├── support_scripts/
+│   └── test_data/
+│       ├── gen_joined_csv.py              # generates a test joined CSV
+│       └── test_joined.csv               # 100-point test file for Load CSV
 ├── misc/
-│   ├── umap_viewer_screenshot.gif
-│   ├── umap_viewer_screenshot.mp4
-│   └── umap_viewer_screenshot.png
+│   └── umap_viewer_screenshot.{gif,mp4,png}
+├── build.rs               # detects data/points.bin at compile time for WASM embedding
 ├── Cargo.toml
-├── Cargo.lock
-├── Trunk.toml             # WASM / Trunk build config
-├── config.yaml            # native build data paths and colour file references
-├── index.html             # WASM HTML shell
-├── install_fonts.sh       # copies SF Mono from macOS system fonts
-├── .gitignore
-├── LICENSE
+├── Trunk.toml
+├── config.yaml
+├── index.html
+├── install_fonts.sh
 └── README.md
 ```
 
@@ -73,119 +74,108 @@ umap_viewer/
 
 | Module | Responsibility |
 |---|---|
-| `data.rs` | Loads parquet files with Polars (native) or a compact binary blob (WASM). Defines `ColorMap` and `PointCloud`. Builds a 512×512 `SpatialGrid` for O(1) hover hit-testing. |
-| `config.rs` | Deserialises `config.yaml`: coordinates path, one or more label parquet files, optional per-label-set colour CSV files. |
-| `point_renderer.rs` | Creates the wgpu render pipeline. Each point is an instanced quad (6 vertices). Per-instance data: position, RGB colour, highlight factor. |
+| `data.rs` | Loads parquet files (native), a compact binary blob (WASM), or a joined CSV on any target. Defines `ColorMap` and `PointCloud`. Builds a `SpatialGrid` for O(1) hover hit-testing. Auto-detects gzip/zip compression when loading CSV. |
+| `config.rs` | Deserialises `config.yaml`: coordinates path, one or more label parquet files, optional colour CSVs. Returns `None` if no config is found so the app starts empty. |
+| `point_renderer.rs` | Creates the wgpu render pipeline. Each point is an instanced quad. Per-instance data: position, RGB colour, highlight factor. |
 | `shaders/points.wgsl` | Vertex shader applies pan/zoom transform and quad offset. Fragment shader renders antialiased circles via distance. |
-| `app.rs` | Immediate-mode egui UI: left control panel, right histogram panel, bottom table panel, central wgpu canvas. Manages selection state, sort state, polygon vertices, and label-set switching. |
+| `app.rs` | Immediate-mode egui UI: left control panel, right histogram panel, bottom table panel, central wgpu canvas. Manages selection, sort, polygon, tooltip, CSV upload, and label-set switching. |
 
 ### Data flow
 
 ```
-Parquet files ──► PointCloud ──► Vec<Point> (x,y,r,g,b,highlight)
-     +                  │                    │
-colour CSVs        SpatialGrid          wgpu vertex buffer
-(ColorMap)         (hover lookup)       (re-uploaded on selection/label change)
-                        │
-                  all_categories        label selector UI
-                  (all label sets,      (switches active set,
-                   pre-loaded)           recolours points live using ColorMap)
+Parquet / CSV / .bin ──► PointCloud ──► Vec<Point> (x,y,r,g,b,highlight)
+        +                     │                    │
+   colour CSVs          SpatialGrid          wgpu vertex buffer
+   (ColorMap)           (hover lookup)       (re-created on reload / selection change)
+                              │
+                       all_categories        label selector UI
+                       (pre-loaded)          (recolours points live)
 ```
 
 ---
 
-## Example data
+## Data formats
 
-The example files `data/arxiv_ml*` are sourced from the [datamapplot](https://github.com/TutteInstitute/datamapplot) project:
+### Joined CSV (recommended — works on native and WASM)
 
+A single CSV file with all data. Compressed variants (`.csv.gz`, `.zip`) are decompressed automatically.
+
+| Column | Required | Description |
+|---|---|---|
+| `id` | yes | Unique identifier for each point |
+| `x` | yes | Embedding x coordinate (float) |
+| `y` | yes | Embedding y coordinate (float) |
+| `labels` | yes | Primary category label |
+| `info` | no | Plain text or `[text](url)` markdown link shown in the tooltip |
+| `labels_<name>` | no | Additional label sets (e.g. `labels_cluster`) |
+
+Example row:
 ```
-https://github.com/TutteInstitute/datamapplot/raw/main/examples/
+cell_001,3.14,-1.27,TypeA,"see [paper](https://example.com)",clust_5
 ```
 
-Please refer to that repository for the original licence and attribution.
+A test file is provided at `support_scripts/test_data/test_joined.csv`. To regenerate it:
+```bash
+python3 support_scripts/test_data/gen_joined_csv.py
+```
 
----
-
-## Data format
-
-### Input: Parquet (native builds)
+### Parquet (native builds only)
 
 One coordinates file plus one or more label files, all joined on `id`:
 
-| File | Required columns | Arrow / Parquet type | Notes |
-|---|---|---|---|
-| `coords_parquet` | `id` | `Utf8` / `LargeUtf8` | Unique point identifier |
-| | `coordinates` | `FixedSizeList<Float32>[2]` | `[x, y]` — 2D UMAP embedding |
-| `labels_parquet` (each) | `id` | `Utf8` / `LargeUtf8` | Must match IDs in coords file |
-| | `labels` | `Utf8` / `LargeUtf8` | Category / class name for colouring |
-
-Each label file is joined on `id` (left join: points with no matching label get an empty category). Column names are fixed; extra columns are ignored.
-
-### Input: Colour CSV (optional, native builds)
-
-A plain CSV file mapping category names to hex colours. One file can be provided per label set via `label_colors` in `config.yaml`.
-
-```csv
-label,color
--1,#888888
-0,#E74C3C
-1,#3498DB
-2,#2ECC71
-```
-
-Rules:
-- Header row `label,color` is optional and skipped automatically.
-- Lines starting with `#` are treated as comments.
-- Colour must be `#RRGGBB` (six hex digits).
-- Categories not listed in the CSV fall back to the default hue-based colouring.
+| File | Required columns | Arrow / Parquet type |
+|---|---|---|
+| `coords_parquet` | `id` (Utf8), `coordinates` (FixedSizeList\<Float32\>[2]) | |
+| `labels_parquet` | `id` (Utf8), `labels` (Utf8) | |
 
 #### Generating parquet files with Python
 
 ```python
-import numpy as np
 import polars as pl
 
-# coords — FixedSizeList<f32, 2>
 coords = pl.DataFrame({
     "id": [f"pt{i}" for i in range(n)],
-    "coordinates": pl.Series(
-        embedding.astype("float32").tolist()   # shape (n, 2)
-    ).cast(pl.Array(pl.Float32, 2)),
+    "coordinates": pl.Series(embedding.astype("float32").tolist())
+                     .cast(pl.Array(pl.Float32, 2)),
 })
 coords.write_parquet("data/umap_coordinate.parquet")
 
-# labels
-labels = pl.DataFrame({
-    "id":     [f"pt{i}" for i in range(n)],
-    "labels": category_strings,               # list[str], length n
-})
+labels = pl.DataFrame({"id": [f"pt{i}" for i in range(n)], "labels": category_strings})
 labels.write_parquet("data/umap_label.parquet")
 ```
 
-### Intermediate: `points.bin` (WASM builds)
+### Colour CSV (optional, native builds)
 
-Compact binary produced by `--export-bin`. All label sets and their resolved colours are embedded. The WASM build includes this file at compile time via `include_bytes!`.
+```csv
+label,color
+TypeA,#E74C3C
+TypeB,#3498DB
+```
+
+Rules: header row is optional; lines starting with `#` are comments; colour must be `#RRGGBB`; unlisted categories use hue defaults.
+
+### `points.bin` (WASM builds)
+
+Compact binary produced by `--export-bin`. Bakes all label sets and resolved colours. The WASM build includes this file at compile time via `include_bytes!` (controlled by `build.rs`). If `data/points.bin` does not exist the WASM build starts empty and loads CSV from the browser.
 
 ```
 [0:4]    magic        "UMAP"
 [4:8]    u32le        n_points
 [8:12]   u32le        n_label_sets
-[12:16]  u32le        id_stride  (fixed byte length per ID; 0 = no IDs)
+[12:16]  u32le        id_stride
 
 for each label set:
   u32le + utf-8      set display name
   u32le              n_categories
   for each category:
     u32le + utf-8    category name
-    u8, u8, u8       R, G, B  (0–255; custom or hue-default)
-  [u32le; n_points]  per-point category index
+    u8, u8, u8       R, G, B
 
+[u32le; n_points]              per-point category index (per label set)
 [f32le; n_points]              x values
 [f32le; n_points]              y values
-[u8; n_points × id_stride]     ID strings (null-padded, omitted when id_stride = 0)
+[u8; n_points × id_stride]     ID strings (null-padded; omitted when id_stride = 0)
 ```
-
-Colours are baked in at export time: if a colour CSV is provided for a label set the CSV values are used; otherwise hue-based defaults are computed and stored. The WASM build therefore needs no CSV files at runtime.
 
 ---
 
@@ -198,18 +188,17 @@ rustup target add wasm32-unknown-unknown   # for web builds
 cargo install trunk                        # for web builds
 ```
 
-**Font** — `SFNSMono.ttf` is not included in this repo. Before your first build, copy SF Mono from macOS system fonts:
+**Font** — `SFNSMono.ttf` is not included. Copy SF Mono from macOS system fonts:
 
 ```bash
 bash install_fonts.sh
 ```
 
-This copies `/System/Library/Fonts/SFNSMono.ttf` to `fonts/SFNSMono.ttf`. On Linux or Windows, copy any monospace TTF with Unicode symbol coverage (Geometric Shapes block: ▲▼, Arrows: →) to that path and update the `include_bytes!` path in `src/app.rs`.
+On Linux/Windows, copy any monospace TTF with Unicode symbol coverage to `fonts/SFNSMono.ttf`.
 
 ### Native desktop
 
 ```bash
-# Edit config.yaml to point at your parquet files, then:
 cargo run --release
 ```
 
@@ -218,51 +207,46 @@ Command-line options:
 | Flag | Description |
 |---|---|
 | `--config <path>` | Path to config file (default: `config.yaml`) |
-| `--export-bin` | Export `points.bin` and exit (required before first WASM build) |
+| `--export-bin` | Export `data/points.bin` and exit (required before WASM builds with embedded data) |
+| `-h`, `--help` | Show help and exit |
+
+If no `config.yaml` is found the app starts with an empty canvas — use **Load CSV…** to load data.
 
 ### Web / WASM
 
-**Step 1** — export the binary blob (once per dataset or config change):
+**Option A — Load CSV in the browser (no pre-build step needed):**
 
 ```bash
+trunk build --release --public-url ./
+```
+
+Open `dist/index.html` and use **Load CSV…**.
+
+**Option B — Embed data at compile time:**
+
+```bash
+# Step 1: export binary blob from config.yaml
 cargo run --release -- --export-bin
+
+# Step 2: build with embedded data
+trunk build --release --public-url ./
 ```
 
-This reads all label sets and colour CSVs from `config.yaml`, bakes the colours in, and writes `data/points.bin`.
-
-**Step 2** — build or serve:
+Development server with hot reload:
 
 ```bash
-# Development: hot-reload on asset changes
 trunk serve
-
-# Production: optimised WASM in dist/ with relative asset paths
-trunk build --release --public-url ./
 ```
 
-`--public-url ./` emits relative paths (`./app.wasm`, `./app.js`) in the generated HTML so the app works when served from a subdirectory (e.g. GitHub Pages). Omit it only if deploying to the root of a domain. Do **not** put `public_url` in `Trunk.toml` — `trunk serve` requires an absolute path and will panic otherwise.
-
-The dev server binds to `0.0.0.0:8080` by default (see `Trunk.toml`). Open `http://localhost:8080` in the browser.
-
-To serve the `dist/` folder with any static file server (nginx, Python, etc.):
-
-```bash
-trunk build --release --public-url ./
-python3 -m http.server 8080 --directory dist
-```
+`--public-url ./` emits relative asset paths for GitHub Pages / subdirectory hosting.
 
 ---
 
-## Configuration
-
-### `config.yaml`
-
-The repo ships with the arXiv ML example dataset configured across five hierarchical cluster layers:
+## Configuration (`config.yaml`)
 
 ```yaml
 coords_parquet: data/arxiv_ml_data_map.parquet
 
-# key = UI display name, value = path to labels parquet
 labels_parquet:
   Layer 0: data/arxiv_ml_layer0_cluster_labels.parquet
   Layer 1: data/arxiv_ml_layer1_cluster_labels.parquet
@@ -270,34 +254,19 @@ labels_parquet:
   Layer 3: data/arxiv_ml_layer3_cluster_labels.parquet
   Layer 4: data/arxiv_ml_layer4_cluster_labels.parquet
 
-# Optional: per-label-set colour CSV files.
-# Key must match a key in labels_parquet.
-# Label sets without an entry here use evenly-spaced hue defaults.
-#label_colors:
-#  Layer 0: data/cluster_colors.csv
+# Optional per-label-set colour files (key must match labels_parquet key)
+# label_colors:
+#   Layer 0: data/cluster_colors.csv
 
 output_bin: data/points.bin
 ```
 
-**Single label file** (simple case):
+Simple single-file config:
 
 ```yaml
 coords_parquet: data/umap_coordinate.parquet
 labels_parquet: data/umap_label.parquet
 output_bin:     data/points.bin
-```
-
-When multiple label sets are configured, the left panel shows a selector to switch between them. Switching recolours all points instantly (categories are pre-loaded at startup). Running `--export-bin` bakes all label sets and their colours into `points.bin`, making the same UI available in the WASM build without any CSV files.
-
-### `Trunk.toml`
-
-```toml
-[build]
-dist = "dist"
-
-[serve]
-address = "0.0.0.0"
-port = 8080
 ```
 
 ---
@@ -307,43 +276,27 @@ port = 8080
 | Action | How |
 |---|---|
 | Pan | Navigate mode → drag (mouse or single finger on touch) |
-| Zoom | Scroll wheel; pinch gesture on touch devices |
-| Two-finger pan | Pinch gesture centroid translation (touch devices) |
-| Reset view | "Reset view" button — clears selection, resets pan and zoom to default |
-| Switch label set | Click a label name in the **Label set** selector (left panel) |
+| Zoom | Scroll wheel; pinch gesture on touch |
+| Reset view | **Reset view** button |
+| Load data | **Load CSV…** in the left panel (`.csv`, `.csv.gz`, `.zip`) |
+| CSV format help | **?** button next to Load CSV… |
+| Switch label set | Click a label name in the **Label set** selector |
 | Enter selection mode | Click **Select** in the mode toggle |
 | Add polygon vertex | Left-click on canvas |
 | Close polygon | Left-click near the first vertex (≥ 3 vertices) |
-| Start new polygon | Left-click anywhere on canvas while a closed polygon is shown |
 | Cancel polygon | Right-click |
-| Clear selection | "Clear selection" button — removes highlight and panels, preserves pan/zoom |
-| Export selected IDs | "Export IDs" button — saves selected point IDs to a text file (one per line) |
-| Focus a category | Click a category label in the histogram — dims all other points; click again to clear |
-| Sort table | Click any column header in the bottom panel; click again to reverse |
-| Collapse left panel | Click **◀** in the panel heading; click the **▲ Controls** tab to expand |
-| Collapse histogram | Click **▶** in the panel heading; click the **▼ Selected Labels** tab to expand |
-| Collapse table | Click **▼** in the panel heading; click the **▲ Show table** tab to expand |
-
-### Reset view vs Clear selection
-
-| Button | What it does |
-|---|---|
-| **Reset view** | Clears the selection, removes the histogram and table panels, exits selection mode, and resets pan and zoom to the default. Use this to return completely to the initial state. |
-| **Clear selection** | Removes the selection highlight and closes the histogram and table panels. Pan and zoom are preserved — you stay at the current location and zoom level. |
-
-### Polygon selection workflow
-
-After closing a polygon the selection is confirmed and the polygon outline remains visible as a static closed shape. The histogram and table update immediately to reflect the selected points. To refine the selection, click anywhere on the canvas while in **Select** mode — this discards the old polygon and lets you draw a new one; the previous selection data stays visible in the panels until the new polygon is closed and the selection updates. Right-clicking at any time cancels the in-progress polygon without affecting the current selection.
-
-### Category focus
-
-Clicking a category label in the histogram panel isolates that category within the current selection: only points belonging to that category stay at full brightness and are rendered at **2× their normal size**; all other points are dimmed to 15% opacity. The active label is highlighted with a yellow background and black text. Clicking the same label again restores the normal selection highlight. Focus is automatically cleared when a new polygon is drawn, the selection is cleared, or the view is reset.
-
-Points that have no assigned label appear as `(unlabeled)` in both the histogram and the table. Clicking `(unlabeled)` focuses those points just like any named category. Points with no ID string show `(no id)` in the ID column of the table.
-
-Unlabeled points are rendered in mid-gray (`#808080`) and at 50% of the opacity of labelled points in every view state: at rest (0.5 vs 1.0), when selected (0.5 vs 1.0), and when unselected (0.075 vs 0.15). The histogram bar for `(unlabeled)` uses the same gray so scatter plot and histogram colours always match. Both the color and the dimming update instantly when switching label sets.
-
-Point colours come from the active label set's colour map (custom CSV if provided, otherwise evenly-spaced hues). The histogram bars use the same colours as the scatter plot. Selected points are highlighted; unselected points are dimmed to 15% opacity. The hover tooltip shows `label: <category>`, `id: <point id>`, and data coordinates.
+| Clear selection | **Clear selection** button |
+| Export selected IDs | **Export IDs** button |
+| Pin tooltip | Click a point — tooltip stays visible and tracks the point |
+| Close tooltip | Click **✕** in the tooltip, or click empty canvas |
+| Search table | Type in the search box (matches label, ID, and info) |
+| Go to pinned row | **Go to selected** button in the bottom panel |
+| Clear category focus | **Clear focus** button in the bottom panel |
+| Focus a category | Click a category label in the histogram |
+| Sort table | Click a column header; click again to reverse |
+| Collapse left panel | Click **◀**; click the **▲ Controls** tab to expand |
+| Collapse histogram | Click **▶**; click the **▼ Selected Labels** tab to expand |
+| Collapse table | Click **▼**; click the **▲ Show table** tab to expand |
 
 ---
 
@@ -356,9 +309,18 @@ Point colours come from the active label set's colour map (custom CSV if provide
 | `egui-wgpu` | egui ↔ wgpu paint callback integration |
 | `wgpu` | GPU rendering (Metal / Vulkan / DX12 / WebGL2) |
 | `bytemuck` | Zero-copy struct → GPU buffer casting |
-| `polars` | Parquet loading and column processing (native only) |
+| `csv` | Joined CSV parsing (all targets including WASM) |
+| `flate2` | Gzip decompression for `.csv.gz` files |
+| `zip` | Zip archive decompression for `.zip` files |
+| `polars` | Parquet loading (native only) |
 | `serde` / `serde_yaml` | `config.yaml` deserialisation (native only) |
-| `indexmap` | Order-preserving map for `labels_parquet` and `label_colors` in `config.yaml` (native only) |
-| `rfd` | Native file save dialog for ID export (native only) |
-| `dirs` | Resolves `~/Downloads` as the default save directory (native only) |
-| `wasm-bindgen` / `web-sys` / `js-sys` | Rust ↔ browser JS bindings; blob download for ID export (WASM only) |
+| `indexmap` | Order-preserving map for multi-label config (native only) |
+| `rfd` | Native file dialogs (native only) |
+| `dirs` | Resolves `~/Downloads` (native only) |
+| `wasm-bindgen` / `web-sys` / `js-sys` | Rust ↔ browser bindings (WASM only) |
+
+---
+
+## Example data
+
+The files `data/arxiv_ml*` are sourced from the [datamapplot](https://github.com/TutteInstitute/datamapplot) project. Refer to that repository for the original licence and attribution.
