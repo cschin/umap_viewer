@@ -109,6 +109,44 @@ pub struct PointCloud {
     pub category_color_maps: Vec<ColorMap>,
 }
 
+/// Decompress `bytes` if they look like gzip or zip; otherwise return them as-is.
+///
+/// - Gzip  magic: `1f 8b`
+/// - Zip   magic: `50 4b 03 04`
+///
+/// For zip archives the first file entry is decompressed; if it is not a `.csv`
+/// file a descriptive error is returned.
+fn decompress_csv(bytes: &[u8]) -> Result<std::borrow::Cow<'_, [u8]>, Box<dyn std::error::Error>> {
+    if bytes.starts_with(&[0x1f, 0x8b]) {
+        // gzip
+        use flate2::read::GzDecoder;
+        use std::io::Read;
+        let mut decoder = GzDecoder::new(bytes);
+        let mut out = Vec::new();
+        decoder.read_to_end(&mut out)?;
+        Ok(std::borrow::Cow::Owned(out))
+    } else if bytes.starts_with(&[0x50, 0x4b, 0x03, 0x04]) {
+        // zip
+        use std::io::Read;
+        let cursor = std::io::Cursor::new(bytes);
+        let mut archive = zip::ZipArchive::new(cursor)?;
+        // Find first .csv entry
+        let idx = (0..archive.len())
+            .find(|&i| {
+                archive.by_index(i)
+                    .map(|f| f.name().to_ascii_lowercase().ends_with(".csv"))
+                    .unwrap_or(false)
+            })
+            .ok_or("zip archive contains no .csv file")?;
+        let mut file = archive.by_index(idx)?;
+        let mut out = Vec::new();
+        file.read_to_end(&mut out)?;
+        Ok(std::borrow::Cow::Owned(out))
+    } else {
+        Ok(std::borrow::Cow::Borrowed(bytes))
+    }
+}
+
 impl PointCloud {
     /// An empty cloud with no points. Used as the initial state when no data file
     /// is provided at startup.
@@ -616,7 +654,8 @@ impl PointCloud {
         Ok(map)
     }
 
-    /// Parse a joined CSV with columns: id, x, y, labels[, info][, labels_*]
+    /// Parse a joined CSV (plain, gzip-compressed, or zip archive) with columns:
+    /// id, x, y, labels[, info][, labels_*]
     ///
     /// At least one `labels` column is required. Additional label sets can be
     /// provided as `labels_<name>` columns (e.g. `labels_layer1`). An optional
@@ -624,7 +663,8 @@ impl PointCloud {
     /// Colors are auto-assigned by evenly spacing hues across unique categories.
     /// Works on all targets including WASM.
     pub fn from_csv_bytes(bytes: &[u8]) -> Result<Self, Box<dyn std::error::Error>> {
-        let mut rdr = csv::Reader::from_reader(std::io::Cursor::new(bytes));
+        let bytes: std::borrow::Cow<[u8]> = decompress_csv(bytes)?;
+        let mut rdr = csv::Reader::from_reader(std::io::Cursor::new(bytes.as_ref()));
         let headers: Vec<String> = rdr.headers()?.iter().map(|s| s.to_string()).collect();
 
         let col = |name: &str| headers.iter().position(|h| h == name);

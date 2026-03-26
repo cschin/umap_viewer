@@ -30,7 +30,7 @@ fn trigger_csv_upload() {
         .ok().and_then(|e| e.dyn_into().ok())
     { Some(i) => i, None => return };
     let _ = input.set_attribute("type", "file");
-    let _ = input.set_attribute("accept", ".csv");
+    let _ = input.set_attribute("accept", ".csv,.gz,.zip");
     let _ = input.set_attribute("style", "display:none");
 
     let onchange: Closure<dyn FnMut(web_sys::Event)> = {
@@ -170,6 +170,10 @@ pub struct UmapApp {
     sorted_rows: Vec<usize>, // permutation of 0..selected_indices.len()
     label_search: String,    // incremental filter for Label and ID columns
     bottom_panel_height: f32, // user-controlled via drag handle; exact_height pins the panel
+    // CSV load error shown inline in the left panel
+    load_error: Option<String>,
+    // show CSV format help window
+    show_csv_format: bool,
     // wgpu queue for point buffer uploads
     wgpu_queue: Arc<wgpu::Queue>,
     // label file selector
@@ -396,6 +400,8 @@ impl UmapApp {
             label_search: String::new(),
             bottom_panel_height: 150.0,
             wgpu_queue,
+            load_error: None,
+            show_csv_format: false,
             label_files: Vec::new(),
             all_label_categories: Vec::new(),
             color_maps: Vec::new(),
@@ -648,6 +654,7 @@ impl UmapApp {
         self.label_search.clear();
         self.category_histogram.clear();
         self.mode = Mode::Navigate;
+        self.load_error = None;
     }
 
     /// Pan so the centroid of the current selection lands at the canvas centre.
@@ -800,34 +807,53 @@ impl UmapApp {
                         self.pinned_point = None;
                     }
 
-                    // ---- Load CSV (native) ----
-                    #[cfg(not(target_arch = "wasm32"))]
-                    if ui.button("Load CSV…")
-                        .on_hover_text("Load a joined CSV (id, x, y, labels[, info][, labels_*])")
-                        .clicked()
-                    {
-                        if let Some(path) = rfd::FileDialog::new()
-                            .add_filter("CSV", &["csv"])
-                            .pick_file()
+                    // ---- Load CSV ----
+                    ui.horizontal(|ui| {
+                        #[cfg(not(target_arch = "wasm32"))]
+                        if ui.button("Load CSV…")
+                            .on_hover_text("Load a joined CSV (.csv, .csv.gz, or .zip)")
+                            .clicked()
                         {
-                            match std::fs::read(&path)
-                                .map_err(|e| e.to_string())
-                                .and_then(|b| PointCloud::from_csv_bytes(&b)
-                                    .map_err(|e| e.to_string()))
+                            if let Some(path) = rfd::FileDialog::new()
+                                .add_filter("CSV / compressed CSV", &["csv", "gz", "zip"])
+                                .pick_file()
                             {
-                                Ok(cloud) => self.reload_cloud(cloud, frame),
-                                Err(e) => eprintln!("CSV load error: {e}"),
+                                match std::fs::read(&path)
+                                    .map_err(|e| e.to_string())
+                                    .and_then(|b| PointCloud::from_csv_bytes(&b)
+                                        .map_err(|e| e.to_string()))
+                                {
+                                    Ok(cloud) => self.reload_cloud(cloud, frame),
+                                    Err(e) => self.load_error = Some(e),
+                                }
                             }
                         }
-                    }
 
-                    // ---- Load CSV (WASM) ----
-                    #[cfg(target_arch = "wasm32")]
-                    if ui.button("Load CSV…")
-                        .on_hover_text("Load a joined CSV (id, x, y, labels[, info][, labels_*])")
-                        .clicked()
-                    {
-                        trigger_csv_upload();
+                        #[cfg(target_arch = "wasm32")]
+                        if ui.button("Load CSV…")
+                            .on_hover_text("Load a joined CSV (.csv, .csv.gz, or .zip)")
+                            .clicked()
+                        {
+                            trigger_csv_upload();
+                        }
+
+                        if ui.small_button("?")
+                            .on_hover_text("Show expected CSV format")
+                            .clicked()
+                        {
+                            self.show_csv_format = true;
+                        }
+                    });
+
+                    // Inline error message
+                    if let Some(ref err) = self.load_error.clone() {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.colored_label(egui::Color32::from_rgb(220, 80, 80), "⚠");
+                            ui.colored_label(egui::Color32::from_rgb(220, 80, 80), err);
+                        });
+                        if ui.small_button("Dismiss").clicked() {
+                            self.load_error = None;
+                        }
                     }
 
                     ui.add_space(8.0);
@@ -1829,11 +1855,57 @@ impl eframe::App for UmapApp {
             if let Some(bytes) = maybe {
                 match PointCloud::from_csv_bytes(&bytes) {
                     Ok(cloud) => self.reload_cloud(cloud, frame),
-                    Err(e) => web_sys::console::error_1(
-                        &format!("CSV load error: {e}").into()),
+                    Err(e) => self.load_error = Some(e.to_string()),
                 }
             }
         }
+        // ---- CSV format help window ----
+        if self.show_csv_format {
+            let mut open = true;
+            egui::Window::new("CSV Format")
+                .open(&mut open)
+                .resizable(false)
+                .collapsible(false)
+                .show(ctx, |ui| {
+                    ui.label("Load a plain CSV (or gzip / zip compressed CSV) with these columns:");
+                    ui.add_space(6.0);
+                    ui.monospace("id, x, y, labels [, info] [, labels_<name> …]");
+                    ui.add_space(8.0);
+                    egui::Grid::new("csv_fmt_grid")
+                        .num_columns(2)
+                        .striped(true)
+                        .show(ui, |ui| {
+                            ui.strong("Column");
+                            ui.strong("Description");
+                            ui.end_row();
+                            ui.monospace("id");
+                            ui.label("Unique identifier for each point (string or number)");
+                            ui.end_row();
+                            ui.monospace("x");
+                            ui.label("UMAP x coordinate (float)");
+                            ui.end_row();
+                            ui.monospace("y");
+                            ui.label("UMAP y coordinate (float)");
+                            ui.end_row();
+                            ui.monospace("labels");
+                            ui.label("Primary category label (required)");
+                            ui.end_row();
+                            ui.monospace("info");
+                            ui.label("Optional text or markdown link  [text](url)");
+                            ui.end_row();
+                            ui.monospace("labels_<name>");
+                            ui.label("Additional label sets (e.g. labels_cluster)");
+                            ui.end_row();
+                        });
+                    ui.add_space(8.0);
+                    ui.label("Accepted file formats:  .csv   .csv.gz   .zip (first .csv entry)");
+                    ui.add_space(4.0);
+                    ui.label("Example row:");
+                    ui.monospace("cell_001,3.14,-1.27,TypeA,\"see [paper](https://example.com)\",clust_5");
+                });
+            if !open { self.show_csv_format = false; }
+        }
+
         self.show_left_panel(ctx, frame);
         self.show_bottom_panel(ctx);
         let histogram_was_visible = self.histogram_visible;
