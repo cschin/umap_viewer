@@ -937,16 +937,6 @@ impl UmapApp {
 
                     ui.add_space(8.0);
                     ui.separator();
-                    ui.label("Cursor position:");
-                    if let Some((x, y)) = self.hover_data_pos {
-                        ui.monospace(format!("x = {:.4}", x));
-                        ui.monospace(format!("y = {:.4}", y));
-                    } else {
-                        ui.monospace("x = —");
-                        ui.monospace("y = —");
-                    }
-                    ui.add_space(8.0);
-                    ui.separator();
                     ui.label("Controls:");
                     ui.label("  Scroll → zoom");
                     if self.mode == Mode::Navigate {
