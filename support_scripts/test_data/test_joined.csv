@@ -1,0 +1,101 @@
+id,x,y,labels,info,labels_shape
+cluster_D_p03,5.013076,-1.483744,cluster_D,[cluster_D](https://en.wikipedia.org/wiki/Machine_learning),diamond
+cluster_A_p01,2.161509,3.950446,cluster_A,"Point in cluster_A near (2.16, 3.95)",circle
+cluster_C_p07,-0.709458,-1.387182,cluster_C,,triangle
+cluster_E_p01,-1.146346,-3.576855,cluster_E,[cluster_E](https://en.wikipedia.org/wiki/Data_visualization),hexagon
+cluster_C_p19,0.899668,-1.928745,cluster_C,"Point in cluster_C near (0.90, -1.93)",triangle
+cluster_D_p07,3.116651,-0.922042,cluster_D,,diamond
+cluster_E_p08,-3.176516,-2.455835,cluster_E,[cluster_E](https://en.wikipedia.org/wiki/Data_visualization),hexagon
+cluster_E_p17,-1.507065,-3.585676,cluster_E,"Point in cluster_E near (-1.51, -3.59)",hexagon
+cluster_A_p12,1.908150,3.151818,cluster_A,,circle
+cluster_E_p11,-1.912650,-2.937853,cluster_E,[cluster_E](https://en.wikipedia.org/wiki/Data_visualization),hexagon
+cluster_B_p12,-2.952449,1.211520,cluster_B,"Point in cluster_B near (-2.95, 1.21)",square
+cluster_B_p02,-2.878663,2.617785,cluster_B,,square
+cluster_E_p09,-2.769623,-2.838220,cluster_E,[cluster_E](https://en.wikipedia.org/wiki/Data_visualization),hexagon
+cluster_D_p18,3.499289,-1.310346,cluster_D,"Point in cluster_D near (3.50, -1.31)",diamond
+cluster_D_p16,3.489225,-1.056636,cluster_D,,diamond
+cluster_A_p09,2.389836,3.015927,cluster_A,[cluster_A](https://en.wikipedia.org/wiki/Cluster_analysis),circle
+cluster_B_p08,-3.122861,0.568579,cluster_B,"Point in cluster_B near (-3.12, 0.57)",square
+cluster_E_p04,-1.290245,-2.221840,cluster_E,,hexagon
+cluster_C_p04,1.966265,-2.052784,cluster_C,[cluster_C](https://en.wikipedia.org/wiki/UMAP),triangle
+cluster_E_p19,-1.988302,-3.019492,cluster_E,"Point in cluster_E near (-1.99, -3.02)",hexagon
+cluster_B_p11,-3.216045,1.004052,cluster_B,,square
+cluster_B_p15,-2.174104,1.190347,cluster_B,[cluster_B](https://en.wikipedia.org/wiki/Dimensionality_reduction),square
+cluster_C_p05,-0.524618,-3.556607,cluster_C,"Point in cluster_C near (-0.52, -3.56)",triangle
+cluster_D_p13,3.944096,-1.440989,cluster_D,,diamond
+cluster_A_p17,1.207985,2.731384,cluster_A,[cluster_A](https://en.wikipedia.org/wiki/Cluster_analysis),circle
+cluster_C_p10,0.117267,-4.556996,cluster_C,"Point in cluster_C near (0.12, -4.56)",triangle
+cluster_A_p03,2.244899,3.148889,cluster_A,,circle
+cluster_A_p18,1.730159,2.751284,cluster_A,[cluster_A](https://en.wikipedia.org/wiki/Cluster_analysis),circle
+cluster_B_p14,-3.084488,2.254808,cluster_B,"Point in cluster_B near (-3.08, 2.25)",square
+cluster_A_p14,1.725581,2.790636,cluster_A,,circle
+cluster_E_p07,-1.856502,-2.634821,cluster_E,[cluster_E](https://en.wikipedia.org/wiki/Data_visualization),hexagon
+cluster_D_p00,3.714413,-1.072140,cluster_D,"Point in cluster_D near (3.71, -1.07)",diamond
+cluster_E_p06,-1.841482,-3.717222,cluster_E,,hexagon
+cluster_B_p09,-3.691540,2.153867,cluster_B,[cluster_B](https://en.wikipedia.org/wiki/Dimensionality_reduction),square
+cluster_D_p19,4.127561,-0.326305,cluster_D,"Point in cluster_D near (4.13, -0.33)",diamond
+cluster_A_p08,1.116439,2.444977,cluster_A,,circle
+cluster_C_p16,0.856924,-1.757880,cluster_C,[cluster_C](https://en.wikipedia.org/wiki/UMAP),triangle
+cluster_C_p01,1.080924,-2.934330,cluster_C,"Point in cluster_C near (1.08, -2.93)",triangle
+cluster_C_p13,-0.844644,-1.915765,cluster_C,,triangle
+cluster_C_p06,0.078087,-2.275453,cluster_C,[cluster_C](https://en.wikipedia.org/wiki/UMAP),triangle
+cluster_A_p13,3.074212,3.747095,cluster_A,"Point in cluster_A near (3.07, 3.75)",circle
+cluster_A_p16,2.660317,2.887387,cluster_A,,circle
+cluster_D_p06,4.192807,-1.066759,cluster_D,[cluster_D](https://en.wikipedia.org/wiki/Machine_learning),diamond
+cluster_E_p05,-2.197611,-3.094575,cluster_E,"Point in cluster_E near (-2.20, -3.09)",hexagon
+cluster_E_p02,-1.702171,-2.857888,cluster_E,,hexagon
+cluster_E_p15,-2.140624,-2.224367,cluster_E,[cluster_E](https://en.wikipedia.org/wiki/Data_visualization),hexagon
+cluster_C_p02,0.681684,-1.569180,cluster_C,"Point in cluster_C near (0.68, -1.57)",triangle
+cluster_B_p06,-2.250931,1.185054,cluster_B,,square
+cluster_A_p05,0.954340,2.964802,cluster_A,[cluster_A](https://en.wikipedia.org/wiki/Cluster_analysis),circle
+cluster_B_p19,-2.982731,2.314826,cluster_B,"Point in cluster_B near (-2.98, 2.31)",square
+cluster_A_p02,1.791422,2.579604,cluster_A,,circle
+cluster_D_p08,4.061536,-1.922386,cluster_D,[cluster_D](https://en.wikipedia.org/wiki/Machine_learning),diamond
+cluster_D_p17,4.130146,-0.188286,cluster_D,"Point in cluster_D near (4.13, -0.19)",diamond
+cluster_C_p17,0.705615,-2.717534,cluster_C,,triangle
+cluster_E_p03,-2.495477,-3.887715,cluster_E,[cluster_E](https://en.wikipedia.org/wiki/Data_visualization),hexagon
+cluster_D_p05,4.574054,-0.781329,cluster_D,"Point in cluster_D near (4.57, -0.78)",diamond
+cluster_B_p05,-2.822585,2.182206,cluster_B,,square
+cluster_A_p15,1.950115,2.610400,cluster_A,[cluster_A](https://en.wikipedia.org/wiki/Cluster_analysis),circle
+cluster_C_p15,0.469715,-2.140850,cluster_C,"Point in cluster_C near (0.47, -2.14)",triangle
+cluster_C_p03,0.450934,-2.502940,cluster_C,,triangle
+cluster_E_p00,-2.937712,-4.012532,cluster_E,[cluster_E](https://en.wikipedia.org/wiki/Data_visualization),hexagon
+cluster_B_p18,-3.204312,1.554032,cluster_B,"Point in cluster_B near (-3.20, 1.55)",square
+cluster_A_p04,2.774460,3.146714,cluster_A,,circle
+cluster_B_p03,-3.187215,2.554164,cluster_B,[cluster_B](https://en.wikipedia.org/wiki/Dimensionality_reduction),square
+cluster_A_p10,1.873790,2.626481,cluster_A,"Point in cluster_A near (1.87, 2.63)",circle
+cluster_D_p10,3.535809,-1.150192,cluster_D,,diamond
+cluster_B_p00,-2.598796,1.618818,cluster_B,[cluster_B](https://en.wikipedia.org/wiki/Dimensionality_reduction),square
+cluster_D_p04,4.099849,-1.177206,cluster_D,"Point in cluster_D near (4.10, -1.18)",diamond
+cluster_E_p13,-1.997236,-2.672607,cluster_E,,hexagon
+cluster_A_p06,2.510740,4.533691,cluster_A,[cluster_A](https://en.wikipedia.org/wiki/Cluster_analysis),circle
+cluster_D_p12,4.124717,-0.490428,cluster_D,"Point in cluster_D near (4.12, -0.49)",diamond
+cluster_C_p00,0.439843,-1.750192,cluster_C,,triangle
+cluster_D_p15,3.976790,-1.031895,cluster_D,[cluster_D](https://en.wikipedia.org/wiki/Machine_learning),diamond
+cluster_D_p09,4.202157,-0.789038,cluster_D,"Point in cluster_D near (4.20, -0.79)",diamond
+cluster_D_p14,3.729120,-0.336820,cluster_D,,diamond
+cluster_E_p10,-2.220897,-3.422739,cluster_E,[cluster_E](https://en.wikipedia.org/wiki/Data_visualization),hexagon
+cluster_E_p12,-2.430666,-2.314760,cluster_E,"Point in cluster_E near (-2.43, -2.31)",hexagon
+cluster_B_p17,-3.364265,1.780243,cluster_B,,square
+cluster_B_p04,-3.314373,1.857346,cluster_B,[cluster_B](https://en.wikipedia.org/wiki/Dimensionality_reduction),square
+cluster_A_p19,1.710548,2.847087,cluster_A,"Point in cluster_A near (1.71, 2.85)",circle
+cluster_E_p14,-3.036647,-2.653160,cluster_E,,hexagon
+cluster_D_p11,4.453429,-1.468297,cluster_D,[cluster_D](https://en.wikipedia.org/wiki/Machine_learning),diamond
+cluster_C_p14,1.343242,-2.751802,cluster_C,"Point in cluster_C near (1.34, -2.75)",triangle
+cluster_B_p16,-3.101540,1.735954,cluster_B,,square
+cluster_C_p18,-0.199402,-3.334160,cluster_C,[cluster_C](https://en.wikipedia.org/wiki/UMAP),triangle
+cluster_B_p13,-2.158966,1.671968,cluster_B,"Point in cluster_B near (-2.16, 1.67)",square
+cluster_C_p09,0.608740,-2.630141,cluster_C,,triangle
+cluster_A_p00,2.560434,3.088803,cluster_A,[cluster_A](https://en.wikipedia.org/wiki/Cluster_analysis),circle
+cluster_C_p08,0.439317,-2.511226,cluster_C,"Point in cluster_C near (0.44, -2.51)",triangle
+cluster_E_p18,-1.377092,-2.795056,cluster_E,,hexagon
+cluster_A_p07,1.465022,2.844788,cluster_A,[cluster_A](https://en.wikipedia.org/wiki/Cluster_analysis),circle
+cluster_C_p11,-0.096312,-2.641065,cluster_C,"Point in cluster_C near (-0.10, -2.64)",triangle
+cluster_B_p07,-3.360467,1.205096,cluster_B,,square
+cluster_D_p01,3.722161,-1.053641,cluster_D,[cluster_D](https://en.wikipedia.org/wiki/Machine_learning),diamond
+cluster_D_p02,3.305564,0.380962,cluster_D,"Point in cluster_D near (3.31, 0.38)",diamond
+cluster_C_p12,-0.219991,-3.381108,cluster_C,,triangle
+cluster_B_p01,-3.210644,2.333701,cluster_B,[cluster_B](https://en.wikipedia.org/wiki/Dimensionality_reduction),square
+cluster_B_p10,-3.046256,1.444086,cluster_B,"Point in cluster_B near (-3.05, 1.44)",square
+cluster_E_p16,-1.114574,-3.463369,cluster_E,,hexagon
+cluster_A_p11,2.493014,3.730171,cluster_A,[cluster_A](https://en.wikipedia.org/wiki/Cluster_analysis),circle
