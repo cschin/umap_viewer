@@ -8,6 +8,58 @@ use crate::data::PointCloud;
 use crate::point_renderer::{build_transform, PointRenderer, Uniforms};
 
 // ---------------------------------------------------------------------------
+// WASM: shared slot for bytes received from the async FileReader callback
+// ---------------------------------------------------------------------------
+#[cfg(target_arch = "wasm32")]
+thread_local! {
+    static PENDING_CSV: std::cell::RefCell<Option<Vec<u8>>> =
+        std::cell::RefCell::new(None);
+}
+
+/// Open a browser file picker for .csv files; result lands in PENDING_CSV.
+#[cfg(target_arch = "wasm32")]
+fn trigger_csv_upload() {
+    use wasm_bindgen::closure::Closure;
+    use wasm_bindgen::JsCast;
+    use web_sys::{FileReader, HtmlInputElement};
+
+    let window = match web_sys::window() { Some(w) => w, None => return };
+    let document = match window.document() { Some(d) => d, None => return };
+
+    let input: HtmlInputElement = match document.create_element("input")
+        .ok().and_then(|e| e.dyn_into().ok())
+    { Some(i) => i, None => return };
+    let _ = input.set_attribute("type", "file");
+    let _ = input.set_attribute("accept", ".csv");
+    let _ = input.set_attribute("style", "display:none");
+
+    let onchange: Closure<dyn FnMut(web_sys::Event)> = {
+        let input_ref = input.clone();
+        Closure::wrap(Box::new(move |_: web_sys::Event| {
+            let files = match input_ref.files() { Some(f) => f, None => return };
+            let file = match files.get(0) { Some(f) => f, None => return };
+            let reader = match FileReader::new() { Ok(r) => r, Err(_) => return };
+            let reader_clone = reader.clone();
+            let onload: Closure<dyn FnMut(web_sys::ProgressEvent)> =
+                Closure::wrap(Box::new(move |_: web_sys::ProgressEvent| {
+                    use js_sys::Uint8Array;
+                    if let Ok(result) = reader_clone.result() {
+                        let bytes = Uint8Array::new(&result).to_vec();
+                        PENDING_CSV.with(|p| *p.borrow_mut() = Some(bytes));
+                    }
+                }));
+            reader.set_onload(Some(onload.as_ref().unchecked_ref()));
+            let _ = reader.read_as_array_buffer(&file);
+            onload.forget();
+        }))
+    };
+    input.set_onchange(Some(onchange.as_ref().unchecked_ref()));
+    onchange.forget();
+    let _ = document.body().map(|b| b.append_child(&input));
+    input.click();
+}
+
+// ---------------------------------------------------------------------------
 // wgpu paint callback
 // ---------------------------------------------------------------------------
 
@@ -550,6 +602,47 @@ impl UmapApp {
         }
     }
 
+    /// Replace the current dataset with a new PointCloud (e.g. loaded from CSV).
+    /// Re-creates the GPU vertex buffer to handle point count changes.
+    fn reload_cloud(&mut self, cloud: PointCloud, frame: &eframe::Frame) {
+        // Re-create the GPU renderer so the vertex buffer matches the new count.
+        if let Some(wgpu_rs) = frame.wgpu_render_state() {
+            let renderer = PointRenderer::new(
+                &wgpu_rs.device,
+                wgpu_rs.target_format,
+                &cloud.points,
+            );
+            wgpu_rs.renderer.write().callback_resources
+                .insert(PointsCallbackResources { renderer });
+        }
+
+        let label_files = cloud.label_set_names.iter()
+            .map(|n| (n.clone(), String::new()))
+            .collect();
+        let all_label_categories = cloud.all_categories.clone();
+        let color_maps = cloud.category_color_maps.clone();
+
+        self.cloud = cloud;
+        self.label_files = label_files;
+        self.all_label_categories = all_label_categories;
+        self.color_maps = color_maps;
+        self.selected_label_idx = 0;
+        self.pan = Vec2::ZERO;
+        self.zoom = 1.0;
+        self.selected_indices.clear();
+        self.sorted_rows.clear();
+        self.pinned_point = None;
+        self.sticky_hover_point = None;
+        self.hovered_point = None;
+        self.hover_data_pos = None;
+        self.focused_category = None;
+        self.poly_verts.clear();
+        self.poly_closed = false;
+        self.label_search.clear();
+        self.category_histogram.clear();
+        self.mode = Mode::Navigate;
+    }
+
     /// Pan so the centroid of the current selection lands at the canvas centre.
     fn center_on_selected(&mut self) {
         if self.selected_indices.is_empty() {
@@ -699,6 +792,37 @@ impl UmapApp {
                         self.shuffle_colors(frame);
                         self.pinned_point = None;
                     }
+
+                    // ---- Load CSV (native) ----
+                    #[cfg(not(target_arch = "wasm32"))]
+                    if ui.button("Load CSV…")
+                        .on_hover_text("Load a joined CSV (id, x, y, labels[, info][, labels_*])")
+                        .clicked()
+                    {
+                        if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("CSV", &["csv"])
+                            .pick_file()
+                        {
+                            match std::fs::read(&path)
+                                .map_err(|e| e.to_string())
+                                .and_then(|b| PointCloud::from_csv_bytes(&b)
+                                    .map_err(|e| e.to_string()))
+                            {
+                                Ok(cloud) => self.reload_cloud(cloud, frame),
+                                Err(e) => eprintln!("CSV load error: {e}"),
+                            }
+                        }
+                    }
+
+                    // ---- Load CSV (WASM) ----
+                    #[cfg(target_arch = "wasm32")]
+                    if ui.button("Load CSV…")
+                        .on_hover_text("Load a joined CSV (id, x, y, labels[, info][, labels_*])")
+                        .clicked()
+                    {
+                        trigger_csv_upload();
+                    }
+
                     ui.add_space(8.0);
                     ui.separator();
 
@@ -1662,6 +1786,18 @@ impl UmapApp {
 
 impl eframe::App for UmapApp {
     fn update(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
+        // WASM: pick up CSV bytes delivered by the async FileReader callback.
+        #[cfg(target_arch = "wasm32")]
+        {
+            let maybe = PENDING_CSV.with(|p| p.borrow_mut().take());
+            if let Some(bytes) = maybe {
+                match PointCloud::from_csv_bytes(&bytes) {
+                    Ok(cloud) => self.reload_cloud(cloud, frame),
+                    Err(e) => web_sys::console::error_1(
+                        &format!("CSV load error: {e}").into()),
+                }
+            }
+        }
         self.show_left_panel(ctx, frame);
         self.show_bottom_panel(ctx);
         let histogram_was_visible = self.histogram_visible;

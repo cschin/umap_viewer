@@ -598,6 +598,143 @@ impl PointCloud {
         Ok(map)
     }
 
+    /// Parse a joined CSV with columns: id, x, y, labels[, info][, labels_*]
+    ///
+    /// At least one `labels` column is required. Additional label sets can be
+    /// provided as `labels_<name>` columns (e.g. `labels_layer1`). An optional
+    /// `info` column carries plain text or `[text](url)` markdown links.
+    /// Colors are auto-assigned by evenly spacing hues across unique categories.
+    /// Works on all targets including WASM.
+    pub fn from_csv_bytes(bytes: &[u8]) -> Result<Self, Box<dyn std::error::Error>> {
+        let mut rdr = csv::Reader::from_reader(std::io::Cursor::new(bytes));
+        let headers: Vec<String> = rdr.headers()?.iter().map(|s| s.to_string()).collect();
+
+        let col = |name: &str| headers.iter().position(|h| h == name);
+
+        let id_col  = col("id") .ok_or("CSV missing required column 'id'")?;
+        let x_col   = col("x")  .ok_or("CSV missing required column 'x'")?;
+        let y_col   = col("y")  .ok_or("CSV missing required column 'y'")?;
+        let info_col = col("info");
+
+        // Collect label set columns: "labels" → name "Labels", "labels_foo" → name "foo"
+        let label_cols: Vec<(usize, String)> = headers.iter().enumerate()
+            .filter(|(_, h)| h.as_str() == "labels" || h.starts_with("labels_"))
+            .map(|(i, h)| {
+                let name = if h == "labels" {
+                    "Labels".to_string()
+                } else {
+                    h.strip_prefix("labels_").unwrap_or(h.as_str()).to_string()
+                };
+                (i, name)
+            })
+            .collect();
+
+        if label_cols.is_empty() {
+            return Err("CSV missing required column 'labels'".into());
+        }
+
+        // --- parse rows ---
+        let mut ids: Vec<String> = Vec::new();
+        let mut xs: Vec<f32> = Vec::new();
+        let mut ys: Vec<f32> = Vec::new();
+        let mut label_vecs: Vec<Vec<String>> = vec![Vec::new(); label_cols.len()];
+        let mut info_vec: Vec<String> = Vec::new();
+
+        for result in rdr.records() {
+            let rec = result?;
+            ids.push(rec.get(id_col).unwrap_or("").to_string());
+            xs.push(rec.get(x_col).unwrap_or("0").parse::<f32>()?);
+            ys.push(rec.get(y_col).unwrap_or("0").parse::<f32>()?);
+            for (j, (ci, _)) in label_cols.iter().enumerate() {
+                label_vecs[j].push(rec.get(*ci).unwrap_or("").to_string());
+            }
+            info_vec.push(
+                info_col.and_then(|ic| rec.get(ic)).unwrap_or("").to_string(),
+            );
+        }
+
+        let n = xs.len();
+        if n == 0 {
+            return Err("CSV contains no data rows".into());
+        }
+
+        // --- bounds ---
+        let xmin = xs.iter().cloned().fold(f32::INFINITY,     f32::min);
+        let xmax = xs.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+        let ymin = ys.iter().cloned().fold(f32::INFINITY,     f32::min);
+        let ymax = ys.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+        let bounds = [xmin, xmax, ymin, ymax];
+
+        // --- color maps (one per label set) ---
+        let mut all_categories: Vec<Vec<String>> = Vec::new();
+        let mut category_color_maps: Vec<ColorMap> = Vec::new();
+        let mut label_set_names: Vec<String> = Vec::new();
+
+        for (j, (_, set_name)) in label_cols.iter().enumerate() {
+            label_set_names.push(set_name.clone());
+            let cats = &label_vecs[j];
+
+            // Unique categories in first-appearance order
+            let mut order: std::collections::HashMap<&str, usize> =
+                std::collections::HashMap::new();
+            for cat in cats {
+                if !cat.is_empty() {
+                    let n = order.len();
+                    order.entry(cat.as_str()).or_insert(n);
+                }
+            }
+            let n_cats = order.len().max(1);
+            let cmap: ColorMap = order.iter()
+                .map(|(&name, &idx)| {
+                    (name.to_string(), hue_to_rgb(idx as f32 / n_cats as f32))
+                })
+                .collect();
+
+            all_categories.push(cats.clone());
+            category_color_maps.push(cmap);
+        }
+
+        // --- build points colored by first label set ---
+        let first_cats = &all_categories[0];
+        let first_cmap = &category_color_maps[0];
+        let mut cat_order: std::collections::HashMap<&str, usize> =
+            std::collections::HashMap::new();
+        for cat in first_cats {
+            if !cat.is_empty() {
+                let n = cat_order.len();
+                cat_order.entry(cat.as_str()).or_insert(n);
+            }
+        }
+        let n_cats = cat_order.len().max(1);
+
+        let points: Vec<Point> = (0..n).map(|i| {
+            let cat = &first_cats[i];
+            let (r, g, b) = if cat.is_empty() {
+                UNLABELED_COLOR
+            } else {
+                first_cmap.get(cat).copied().unwrap_or_else(|| {
+                    hue_to_rgb(cat_order.get(cat.as_str()).copied().unwrap_or(0) as f32
+                        / n_cats as f32)
+                })
+            };
+            Point { x: xs[i], y: ys[i], r, g, b, highlight: 1.0, size: 1.0 }
+        }).collect();
+
+        let grid = SpatialGrid::build(&points, bounds);
+
+        Ok(PointCloud {
+            points,
+            bounds,
+            grid,
+            labels: ids,
+            categories: first_cats.clone(),
+            info: info_vec,
+            label_set_names,
+            all_categories,
+            category_color_maps,
+        })
+    }
+
     /// Load UMAP coordinates and labels from parquet files.
     /// `coords_path`: schema `id` (Utf8), `coordinates` (FixedSizeList<f32, 2>).
     /// `labels_path`: schema `id` (Utf8), `labels` (Utf8).
