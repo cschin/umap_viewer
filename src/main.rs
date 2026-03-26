@@ -80,14 +80,14 @@ fn main() -> eframe::Result<()> {
 
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("UMAP Viewer")
+            .with_title("UMAP Navigator")
             .with_inner_size([1280.0, 800.0]),
         renderer: eframe::Renderer::Wgpu,
         ..Default::default()
     };
 
     eframe::run_native(
-        "UMAP Viewer",
+        "UMAP Navigator",
         native_options,
         Box::new(move |cc| match maybe_config {
             Some(ref config) => Ok(Box::new(UmapApp::with_config(cc, config))),

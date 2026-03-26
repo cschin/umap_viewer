@@ -715,7 +715,7 @@ impl UmapApp {
                 .min_width(200.0)
                 .show(ctx, |ui| {
                     ui.horizontal(|ui| {
-                        ui.heading("UMAP Viewer");
+                        ui.heading("UMAP Navigator");
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui
                                 .small_button("◀")
