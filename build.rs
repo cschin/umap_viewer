@@ -5,6 +5,8 @@ fn main() {
     if bin.exists() {
         println!("cargo:rustc-cfg=has_embedded_bin");
     }
+    // Tell the compiler this cfg flag is intentionally set by this build script.
+    println!("cargo::rustc-check-cfg=cfg(has_embedded_bin)");
     // Re-run this script if the bin appears or disappears.
     println!("cargo:rerun-if-changed=data/points.bin");
 }
